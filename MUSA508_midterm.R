@@ -73,7 +73,7 @@ q5 <- function(variable) {as.factor(ntile(variable, 5))}
 #################
 #Census data
 
-miami <- st_read('data/studentsData.geojson') %>%
+miami <- st_read('/Users/mori_ghazzawi/Documents/GitHub/MUSA508_midterm/data/studentsData.geojson') %>%
   st_transform('ESRI:102728')
 muni <- st_read('https://opendata.arcgis.com/datasets/5ece0745e24b4617a49f2e098df8117f_0.geojson') %>%
   st_transform(st_crs(miami)) %>%
@@ -127,7 +127,7 @@ hotel <- st_join(hotel, muni, join = st_intersects, left = FALSE)
 malls <- st_read('https://opendata.arcgis.com/datasets/cb24d578246647a9a4c57bbd80c1caa8_0.geojson') %>%
   st_transform(st_crs(miami)) %>%
   st_as_sf() 
-hotel <- st_join(hotel, muni, join = st_intersects, left = FALSE)
+malls <- st_join(malls, muni, join = st_intersects, left = FALSE)
 
 culture <- st_read('https://opendata.arcgis.com/datasets/70c48f0eb067448c8a787cfa1c1c3bb9_0.geojson') %>%
   st_transform(st_crs(miami)) %>%
@@ -138,6 +138,83 @@ commercial <- st_read('https://opendata.arcgis.com/datasets/fb8303c577c24ea386a9
   st_transform(st_crs(miami)) %>%
   st_as_sf() 
 commercial <- st_join(commercial, muni, join = st_intersects, left = FALSE)
+
+parks <- st_read('https://opendata.arcgis.com/datasets/0228d15b2f004758adfdbb4fd71bae10_0.geojson')%>%
+  st_transform(st_crs(miami)) %>%
+  st_as_sf()
+parks <- st_join(parks, muni, join = st_intersects, left = FALSE)
+
+rail <- st_read('https://opendata.arcgis.com/datasets/ee3e2c45427e4c85b751d8ad57dd7b16_0.geojson')%>%
+  st_transform(st_crs(miami))%>%
+  st_as_sf()
+rail <- st_join(rail, muni, join = st_intersects, left = FALSE)
+
+#Subset miami dataframe into all homes with listed sale prices
+sales <- subset(miami, SalePrice > 0)
+
+
+inTrain <- caret::createDataPartition( 
+  y = paste(sales$SalePrice), 
+  p = .60, list = FALSE)
+
+miami.training <- sales[inTrain,] 
+miami.test <- sales[-inTrain,]  
+
+#Looking at home characteristics and the relationship to price
+reg1 <- lm(SalePrice ~ ., data = st_drop_geometry(miami.training) %>% 
+             dplyr::select(SalePrice, AdjustedSqFt, LotSize,
+                           Bed, Bath, YearBuilt))
+summary(reg1)
+
+reg1_predict <- predict(reg1, newdata = miami.test)
+
+summary(reg1_predict)
+
+rmse.train <- caret::MAE(predict(reg1), miami.training$SalePrice)
+rmse.test  <- caret::MAE(reg1_predict, miami.test$SalePrice)
+
+preds.train <- data.frame(pred   = predict(reg1),
+                          actual = miami.training$SalePrice,
+                          source = "training data")
+preds.test  <- data.frame(pred   = reg1_predict,
+                          actual = miami.test$SalePrice,
+                          source = "testing data")
+preds <- rbind(preds.train, preds.test)
+
+ggplot(preds, aes(x = actual, y = pred, color = source)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "green") +
+  geom_abline(color = "orange") +
+  coord_equal() +
+  theme_bw() +
+  facet_wrap(~source, ncol = 2) +
+  labs(title = "Comparing predictions to actual values",
+       x = "Predicted Value",
+       y = "Actual Value") +
+  theme(
+    legend.position = "none"
+  )
+
+#Home Buffers
+homebuffers <- 
+  miami %>%
+  st_buffer(2640) %>%
+  dplyr::select(Folio)
+
+j <- 
+  st_join(PO, homebuffers) %>%
+  filter(!is.na(Folio))
+
+PObyHome <-
+  j %>%
+  group_by(Folio) %>%
+  summarise(PO_Count = n())
+
+clip_PO <- 
+  st_intersection(homebuffers, PO) %>%
+  mutate(Selection_Type = "Clip") %>%
+  summarise(Total_Count = n())
+
 
 #Looking at types ofbusinesses
 commercial_group <- commercial %>% count(BUSDESC)
@@ -158,7 +235,7 @@ head(water)
 
 ggplot() +
   geom_sf(data = muni, fill = "grey40") +
-  geom_sf(data = nhoods, fill = "transparent") +
+  geom_sf(data = tracts, fill = "transparent") +
   geom_sf(data = miami, aes(colour = q5(SalePrice)))
   
 
