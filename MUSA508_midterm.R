@@ -16,6 +16,7 @@ library(grid)
 library(gridExtra)
 library(ggcorrplot)
 library(osmdata)
+library(Hmisc)
 
 root.dir = "https://github.com/mlkornhauser/MUSA508_midterm.git"
 
@@ -126,16 +127,39 @@ ymax = st_bbox(miami.base)[[4]]
 
 #Loading data from OSM - example set = bars
 bars <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>% 
-  add_osm_feature(key = 'amenity', value = c("bar")) %>%
+  add_osm_feature(key = 'amenity', value = c("bar", "pub", "biergarten")) %>%
   osmdata_sf()
-
 bars <- 
   bars$osm_points %>%
   .[miami.base,]
 
+restaurants <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>% 
+  add_osm_feature(key = 'amenity', value = c("cafe", "restaurant", "fast_food")) %>%
+  osmdata_sf()
+restaurants <- 
+  restaurants$osm_points %>%
+  .[miami.base,]
+
+libraries <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>% 
+  add_osm_feature(key = 'amenity', value = c("library")) %>%
+  osmdata_sf()
+libraries <- 
+  libraries$osm_points %>%
+  .[miami.base,]
+
+parking <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>% 
+  add_osm_feature(key = 'amenity', value = c("parking")) %>%
+  osmdata_sf()
+parking <- 
+  parking$osm_points %>%
+  .[miami.base,]
+
 ggplot() +
-  geom_sf(data=miami.base, fill="black") +
-  geom_sf(data=bars, colour="red", size=.5) 
+  geom_sf(data=miami.base, fill="grey") +
+  geom_sf(data=bars, colour="red", size=.75) +
+  geom_sf(data=cafes, colour="blue", size=.75) +
+  geom_sf(data=libraries, colour="orange", size=1) +
+  geom_sf(data=parking, colour="purple", size=.5)
 
 #-----Buffer: Count within buffer of each house
 #Convert OSM data into an sf object with same projection
@@ -248,12 +272,13 @@ summary(reg1)
 #Predicting test values using regression
 reg1_predict <- predict(reg1, newdata = miami.test)
 
-#Calculating mean square error
+#Calculating the error terms
 rmse.train <- caret::MAE(predict(reg1), miami.training$SalePrice)
 rmse.test  <- caret::MAE(reg1_predict, miami.test$SalePrice)
 
 cat("Train MAE: ", as.integer(rmse.train), " \n","Test MAE: ", as.integer(rmse.test))
 
+#Plot the error terms
 preds.train <- data.frame(pred   = predict(reg1),
                           actual = miami.training$SalePrice,
                           source = "training data")
@@ -261,6 +286,7 @@ preds.test  <- data.frame(pred   = reg1_predict,
                           actual = miami.test$SalePrice,
                           source = "testing data")
 preds <- rbind(preds.train, preds.test)
+head(preds)
 
 ggplot(preds, aes(x = pred, y = actual, color = source)) +
   geom_point() +
@@ -275,6 +301,26 @@ ggplot(preds, aes(x = pred, y = actual, color = source)) +
   theme(
     legend.position = "none"
   )
+
+#Plotting predictions by actual price broken into thirds
+preds$cat <- as.numeric(cut2(preds$actual, g=3))
+
+ggplot(preds, aes(x = pred, y = actual, color = source)) +
+  geom_point() +
+  geom_smooth(data = subset(preds, cat ==1), method = "lm", color = "red") +
+  geom_smooth(data = subset(preds, cat ==2), method = "lm", color = "orange") +
+  geom_smooth(data = subset(preds, cat ==3), method = "lm", color = "yellow") +
+  geom_abline(color = "blue") +
+  coord_equal() +
+  theme_bw() +
+  facet_wrap(~source, ncol = 2) +
+  labs(title = "Comparing predictions to actual values",
+       x = "Predicted Value",
+       y = "Actual Value") +
+  theme(
+    legend.position = "none"
+  )
+
 
 # Cross validation
 fitControl <- trainControl(method = "cv", 
