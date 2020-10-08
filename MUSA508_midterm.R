@@ -202,7 +202,7 @@ coast <-
   coast$osm_points %>%
   .[miami.base,]
 
-ggplot() +geom_sf(data = coast)
+ggplot() + geom_sf(data = coast)
 
 #add to MiamiProperties and convert to miles
 MiamiProperties <-
@@ -633,7 +633,6 @@ ggplot(preds, aes(x = pred, y = actual, color = source)) +
     legend.position = "none"
   )
 
-
 # Cross validation
 fitControl <- trainControl(method = "cv", 
                            number = 10,
@@ -699,17 +698,20 @@ coords <- miami.sf %>%
   st_centroid() %>%
   st_coordinates()
 # k nearest neighbors
-neighborList <- knn2nb(knearneigh(coords, k_nearest_neighbors)) #something wrong here
+neighborList <- knn2nb(knearneigh(coords, k_nearest_neighbors))
 spatialWeights <- nb2listw(neighborList, style="W")
-miami.sf$lagPrice <- lag.listw(spatialWeights, boston.sf$SalePrice)
+miami.sf$lagPrice <- lag.listw(spatialWeights, miami.sf$SalePrice)
 
 #errors
-coords.test <-  st_coordinates(miami.test) 
-neighborList.test <- knn2nb(knearneigh(miami.test, k_nearest_neighbors))
+coords.test <-  miami.test %>%
+  dplyr::select(geometry) %>%
+  st_centroid() %>%
+  st_coordinates()
+neighborList.test <- knn2nb(knearneigh(coords.test, k_nearest_neighbors))
 spatialWeights.test <- nb2listw(neighborList.test, style="W")
-miami.test$lagPriceError <- lag.listw(spatialWeights.test, boston.test$SalePrice.AbsError)
+miami.test$lagPriceError <- lag.listw(spatialWeights.test, miami.test$SalePrice.AbsError)
 
-ggplot(boston.sf, aes(x=lagPrice, y=SalePrice)) +
+ggplot(miami.sf, aes(x=lagPrice, y=SalePrice)) +
   geom_point(colour = "#FA7800") +
   geom_smooth(method = "lm", se = FALSE, colour = "#25CB10") +
   labs(title = "Price as a function of the spatial lag of price",
@@ -718,7 +720,7 @@ ggplot(boston.sf, aes(x=lagPrice, y=SalePrice)) +
        y = "Sale Price") +
   plotTheme()
 
-ggplot(boston.test, aes(x=lagPriceError, y=SalePrice)) +
+ggplot(miami.test, aes(x=lagPriceError, y=SalePrice)) +
   geom_point(colour = "#FA7800") +
   geom_smooth(method = "lm", se = FALSE, colour = "#25CB10") +
   labs(title = "Error as a function of the spatial lag of price",
