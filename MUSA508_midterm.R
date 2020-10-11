@@ -17,6 +17,7 @@ library(gridExtra)
 library(ggcorrplot)
 library(osmdata)
 library(Hmisc)
+library(tidycensus)
 
 root.dir = "https://github.com/mlkornhauser/MUSA508_midterm.git"
 
@@ -105,8 +106,7 @@ nn_function <- function(measureFrom,measureTo,k) {
 miami.base <- 
   st_read("https://opendata.arcgis.com/datasets/5ece0745e24b4617a49f2e098df8117f_0.geojson") %>%
   filter(NAME == "MIAMI BEACH" | NAME == "MIAMI") %>%
-  st_union()
-#Need to keep miami.base unprojected to pull and filter OSM data
+  st_union() #Need to keep miami.base unprojected to pull and filter OSM data
 
 miami.base.sf <- miami.base %>%
   st_as_sf(coords = "geometry", crs = 4326, agr = "constant") %>%
@@ -167,17 +167,17 @@ bars.sf <-
   st_transform(st_crs(miami.base.sf))%>%
   distinct()
 
-miami.sf$bars.buffer_660 = #I think it would be good practice to list the number of feet in the column name
-  st_buffer(miami.sf, 660) %>%
-  aggregate(mutate(bars.sf, counter = 1),., sum) %>%
-  pull(counter) 
-miami.sf$bars.buffer_660[is.na(miami.sf$bars.buffer_660)] <- 0
-
-miami.sf$bars.buffer_2640 =
-  st_buffer(miami.sf, 2640) %>%
-  aggregate(mutate(bars.sf, counter = 1),., sum) %>%
-  pull(counter) 
-miami.sf$bars.buffer_2640[is.na(miami.sf$bars.buffer_2640)] <- 0
+# miami.sf$bars.buffer_660 = #I think it would be good practice to list the number of feet in the column name
+#   st_buffer(miami.sf, 660) %>%
+#   aggregate(mutate(bars.sf, counter = 1),., sum) %>%
+#   pull(counter)
+# miami.sf$bars.buffer_660[is.na(miami.sf$bars.buffer_660)] <- 0
+# 
+# miami.sf$bars.buffer_2640 =
+#   st_buffer(miami.sf, 2640) %>%
+#   aggregate(mutate(bars.sf, counter = 1),., sum) %>%
+#   pull(counter) 
+# miami.sf$bars.buffer_2640[is.na(miami.sf$bars.buffer_2640)] <- 0
 
 miami.sf <-
   miami.sf %>%
@@ -235,17 +235,17 @@ entertainment.sf <-
   st_transform(st_crs(miami.base.sf)) %>%
   distinct()
 
-miami.sf$entertainment.buffer_2460 =
-  st_buffer(miami.sf, 2460) %>%
-  aggregate(mutate(entertainment.sf, counter = 1),., sum) %>%
-  pull(counter)
-miami.sf$entertainment.buffer_2460[is.na(miami.sf$entertainment.buffer_2460)] <- 0
-
-miami.sf$entertainment.buffer_5280 =
-  st_buffer(miami.sf, 5280) %>%
-  aggregate(mutate(entertainment.sf, counter = 1),., sum) %>%
-  pull(counter)
-miami.sf$entertainment.buffer_5280[is.na(miami.sf$entertainment.buffer_5280)] <- 0
+# miami.sf$entertainment.buffer_2460 =
+#   st_buffer(miami.sf, 2460) %>%
+#   aggregate(mutate(entertainment.sf, counter = 1),., sum) %>%
+#   pull(counter)
+# miami.sf$entertainment.buffer_2460[is.na(miami.sf$entertainment.buffer_2460)] <- 0
+# 
+# miami.sf$entertainment.buffer_5280 =
+#   st_buffer(miami.sf, 5280) %>%
+#   aggregate(mutate(entertainment.sf, counter = 1),., sum) %>%
+#   pull(counter)
+# miami.sf$entertainment.buffer_5280[is.na(miami.sf$entertainment.buffer_5280)] <- 0
 
 miami.sf <-
   miami.sf %>%
@@ -367,77 +367,77 @@ miami.sf <-
     marina_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(marina.sf)), 4))
 
 #----Parking (OSM)
-parking <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>% 
-  add_osm_feature(key = 'amenity', value = c("parking")) %>%
-  osmdata_sf()
-parking <- 
-  parking$osm_points %>%
-  .[miami.base,]
-
-parking.sf <-
-  parking %>%
-  dplyr::select(geometry) %>%
-  na.omit() %>%
-  st_transform(st_crs(miami.sf)) %>%
-  distinct()
-
-miami.sf$parking_660 =
-  st_buffer(miami.sf, 660) %>%
-  aggregate(mutate(entertainment.sf, counter = 1),., sum) %>%
-  pull(counter)
-miami.sf$parking_660[is.na(miami.sf$parking_660)] <- 0
-
-miami.sf$parking_1320 =
-  st_buffer(miami.sf, 1320) %>%
-  aggregate(mutate(entertainment.sf, counter = 1),., sum) %>%
-  pull(counter)
-miami.sf$parking_1320[is.na(miami.sf$parking_1320)] <- 0
-
-miami.sf <-
-  miami.sf %>%
-  mutate(
-    parking_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(parking.sf)), 1),
-    parking_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(parking.sf)), 2),
-    parking_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(parking.sf)), 3),
-    parking_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(parking.sf)), 4))
+# parking <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>% 
+#   add_osm_feature(key = 'amenity', value = c("parking")) %>%
+#   osmdata_sf()
+# parking <- 
+#   parking$osm_points %>%
+#   .[miami.base,]
+# 
+# parking.sf <-
+#   parking %>%
+#   dplyr::select(geometry) %>%
+#   na.omit() %>%
+#   st_transform(st_crs(miami.sf)) %>%
+#   distinct()
+# 
+# miami.sf$parking_660 =
+#   st_buffer(miami.sf, 660) %>%
+#   aggregate(mutate(entertainment.sf, counter = 1),., sum) %>%
+#   pull(counter)
+# miami.sf$parking_660[is.na(miami.sf$parking_660)] <- 0
+# 
+# miami.sf$parking_1320 =
+#   st_buffer(miami.sf, 1320) %>%
+#   aggregate(mutate(entertainment.sf, counter = 1),., sum) %>%
+#   pull(counter)
+# miami.sf$parking_1320[is.na(miami.sf$parking_1320)] <- 0
+# 
+# miami.sf <-
+#   miami.sf %>%
+#   mutate(
+#     parking_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(parking.sf)), 1),
+#     parking_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(parking.sf)), 2),
+#     parking_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(parking.sf)), 3),
+#     parking_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(parking.sf)), 4))
 
 #----Parks (GEOJSON)
-parks <- st_read('https://opendata.arcgis.com/datasets/0228d15b2f004758adfdbb4fd71bae10_0.geojson')
-parks.sf <- parks %>%
-  st_transform(st_crs(miami.base.sf)) %>%
-  st_as_sf()
-parks.sf <- st_join(parks.sf, miami.base.sf, join = st_intersects, left = FALSE)
-
-miami.sf$parks_660max =
-  st_buffer(miami.sf, 660) %>%
-  aggregate(mutate(parks.sf, counter = SQFT),., max) %>%
-  pull(counter)
-miami.sf$parks_660max[is.na(miami.sf$parks_660max)] <- 0
-
-miami.sf$parks_2640max =
-  st_buffer(miami.sf, 2640) %>%
-  aggregate(mutate(parks.sf, counter = SQFT),., max) %>%
-  pull(counter)
-miami.sf$parks_2640max[is.na(miami.sf$parks_2640max)] <- 0
-
-miami.sf$parks_2640 =
-  st_buffer(miami.sf, 2640) %>%
-  aggregate(mutate(parks.sf, counter = 1),., sum) %>%
-  pull(counter)
-miami.sf$parks_2640[is.na(miami.sf$parks_2640)] <- 0
+# parks <- st_read('https://opendata.arcgis.com/datasets/0228d15b2f004758adfdbb4fd71bae10_0.geojson')
+# parks.sf <- parks %>%
+#   st_transform(st_crs(miami.base.sf)) %>%
+#   st_as_sf()
+# parks.sf <- st_join(parks.sf, miami.base.sf, join = st_intersects, left = FALSE)
+# 
+# miami.sf$parks_660max =
+#   st_buffer(miami.sf, 660) %>%
+#   aggregate(mutate(parks.sf, counter = SQFT),., max) %>%
+#   pull(counter)
+# miami.sf$parks_660max[is.na(miami.sf$parks_660max)] <- 0
+# 
+# miami.sf$parks_2640max =
+#   st_buffer(miami.sf, 2640) %>%
+#   aggregate(mutate(parks.sf, counter = SQFT),., max) %>%
+#   pull(counter)
+# miami.sf$parks_2640max[is.na(miami.sf$parks_2640max)] <- 0
+# 
+# miami.sf$parks_2640 =
+#   st_buffer(miami.sf, 2640) %>%
+#   aggregate(mutate(parks.sf, counter = 1),., sum) %>%
+#   pull(counter)
+# miami.sf$parks_2640[is.na(miami.sf$parks_2640)] <- 0
 
 #----Post Offices (GEOMJSON)
-PO <- st_read('https://opendata.arcgis.com/datasets/74d93cf9e9a44feba3288263a36a6659_0.geojson') 
-PO.sf <- PO %>%
-  st_transform(st_crs(miami.base.sf)) %>%
-  st_as_sf()
-PO.sf <- st_join(PO.sf, miami.base.sf, join = st_intersects, left = FALSE)
-ggplot() + geom_sf(data = miami.base.sf) + geom_sf(data = PO.sf)
-
-miami.sf <-
-  miami.sf %>%
-  mutate(
-    PO_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(PO.sf)), 1))
+# PO <- st_read('https://opendata.arcgis.com/datasets/74d93cf9e9a44feba3288263a36a6659_0.geojson') 
+# PO.sf <- PO %>%
+#   st_transform(st_crs(miami.base.sf)) %>%
+#   st_as_sf()
+# PO.sf <- st_join(PO.sf, miami.base.sf, join = st_intersects, left = FALSE)
+# ggplot() + geom_sf(data = miami.base.sf) + geom_sf(data = PO.sf)
+# 
+# miami.sf <-
+#   miami.sf %>%
+#   mutate(
+#     PO_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(PO.sf)), 1))
 
 #----Restaurants (OSM)
 restaurants <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>% 
@@ -454,11 +454,11 @@ restaurants.sf <-
   st_transform(st_crs(miami.sf)) %>%
   distinct()
 
-miami.sf$restaurants_2640 =
-  st_buffer(miami.sf, 2640) %>%
-  aggregate(mutate(restaurants.sf, counter = 1),., sum) %>%
-  pull(counter)
-miami.sf$restaurants_2640[is.na(miami.sf$restaurants_2640)] <- 0
+# miami.sf$restaurants_2640 =
+#   st_buffer(miami.sf, 2640) %>%
+#   aggregate(mutate(restaurants.sf, counter = 1),., sum) %>%
+#   pull(counter)
+# miami.sf$restaurants_2640[is.na(miami.sf$restaurants_2640)] <- 0
 
 miami.sf <-
   miami.sf %>%
@@ -490,11 +490,11 @@ miami.sf <-
     schools_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(schools.sf)), 3),
     schools_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(schools.sf)), 4))
 
-miami.sf$schools.buffer_5280 =
-  st_buffer(miami.sf, 5280) %>%
-  aggregate(mutate(schools.sf, counter = 1),., sum) %>%
-  pull(counter)
-miami.sf$schools.buffer_5280[is.na(miami.sf$schools.buffer_5280)] <- 0
+# miami.sf$schools.buffer_5280 =
+#   st_buffer(miami.sf, 5280) %>%
+#   aggregate(mutate(schools.sf, counter = 1),., sum) %>%
+#   pull(counter)
+# miami.sf$schools.buffer_5280[is.na(miami.sf$schools.buffer_5280)] <- 0
 
 #----Water (GEOJSON)
 # water <- st_read('https://opendata.arcgis.com/datasets/b44862ec4a1447c09fc6ff0e3d70f81a_0.geojson') 
@@ -516,9 +516,27 @@ miami.sf <- miami.sf %>%
   mutate(Age = 2020 - YearBuilt) %>%
   mutate(BR_4more = Bed > 4) %>%
   mutate(post2000 = as.numeric(YearBuilt > 2000)) %>%
-  mutate(PriceperSQFT = SalePrice / ActualSqFt)
+  mutate(PriceperSQFT = SalePrice / ActualSqFt) 
+miami.sf$Zip.short <- substr(miami.sf$Property.Zip, 1, 5)
 
-unique(miami.sf$XF1)
+miami.sf <- 
+  miami.sf %>%
+  mutate(Bed.cat = case_when(
+    Bed >= 0 & Bed < 3  ~ "Up to 2 Beds",
+    Bed >= 3 & Bed < 4  ~ "3 Beds",
+    Bed >= 4                    ~ "4+ Beds"))
+
+miami.sf <- 
+  miami.sf %>%
+  mutate(Bath.cat = case_when(
+    Bath >= 0 & Bath < 3  ~ "Up to 2 Baths",
+    Bath >= 3 & Bath < 4  ~ "3 Baths",
+    Bath >= 4                    ~ "4+ Baths"))
+
+miami.sf <-
+  miami.sf %>%
+  mutate(Zip_33139 = as.numeric(ifelse(miami.sf$Zip.short == "33139", 1, 0)))
+miami.sf$Zip_33139
 
 #Pool
 poollist <- list("Pool 6' res BETTER 3-8' dpth, tile 250-649 sf",
@@ -530,10 +548,14 @@ poollist <- list("Pool 6' res BETTER 3-8' dpth, tile 250-649 sf",
                  "Luxury Pool - Better")
 miami.sf <- 
   miami.sf %>%
-  mutate(Pool_1 = XF1 %in% poollist, Pool_2 = XF2 %in% poollist, Pool_3 = XF3 %in% poollist)
+  mutate(Pool_1 = XF1 %in% poollist, 
+         Pool_2 = XF2 %in% poollist, 
+         Pool_3 = XF3 %in% poollist)
 miami.sf$Pool <- ifelse(miami.sf$Pool_1 == "TRUE" | 
                           miami.sf$Pool_2 == "TRUE" | 
                           miami.sf$Pool_3 == "TRUE", 1, 0)
+drop <- c("Pool_1","Pool_2","Pool_3")
+miami.sf <- miami.sf[,!(names(miami.sf) %in% drop)]
 
 #Luxury Pool
 luxpoollist <- list( "Luxury Pool - Good.",
@@ -545,6 +567,8 @@ miami.sf <-
 miami.sf$LuxPool <- ifelse(miami.sf$LuxPool_1 == "TRUE" | 
                           miami.sf$LuxPool_2 == "TRUE" | 
                           miami.sf$LuxPool_3 == "TRUE", 1, 0)
+drop <- c("LuxPool_1","LuxPool_2","LuxPool_3")
+miami.sf <- miami.sf[,!(names(miami.sf) %in% drop)]
 
 #Dock
 docklist <- list("Dock - Wood on Light Posts",      
@@ -559,6 +583,8 @@ miami.sf <-
 miami.sf$Dock <- ifelse(miami.sf$Dock_1 == "TRUE" | 
                           miami.sf$Dock_2 == "TRUE" | 
                           miami.sf$Dock_3 == "TRUE", 1, 0)
+drop <- c("Dock_1","Dock_2","Dock_3")
+miami.sf <- miami.sf[,!(names(miami.sf) %in% drop)]
 
 #Hot tub
 hottublist <- list("Jacuzzi",      
@@ -572,6 +598,8 @@ miami.sf <-
 miami.sf$Hottub <- ifelse(miami.sf$Hottub_1 == "TRUE" | 
                           miami.sf$Hottub_2 == "TRUE" | 
                           miami.sf$Hottub_3 == "TRUE", 1, 0)
+drop <- c("Hottub_1","Hottub_2","Hottub_3")
+miami.sf <- miami.sf[,!(names(miami.sf) %in% drop)]
 
 #Patio
 patiolist <- list("Patio - Screened over Concrete Slab",
@@ -582,8 +610,6 @@ patiolist <- list("Patio - Screened over Concrete Slab",
                   "Patio - Concrete Slab w/Roof Aluminum or Fiber",
                   "Patio - Concrete stamped or stained",
                   "Patio - Marble")
-
-
 miami.sf <- 
   miami.sf %>%
   mutate(
@@ -593,6 +619,8 @@ miami.sf <-
 miami.sf$Patio <- ifelse(miami.sf$Patio_1 == "TRUE" | 
                           miami.sf$Patio_2 == "TRUE" | 
                           miami.sf$Patio_3 == "TRUE", 1, 0)
+drop <- c("Patio_1","Patio_2","Patio_3")
+miami.sf <- miami.sf[,!(names(miami.sf) %in% drop)]
 
 #Elevator
 elevlist <- list("Elevator - Passenger")
@@ -605,6 +633,8 @@ miami.sf <-
 miami.sf$Elevator <- ifelse(miami.sf$elev_1 == "TRUE" | 
                              miami.sf$elev_2 == "TRUE" | 
                              miami.sf$elev_3 == "TRUE", 1, 0)
+drop <- c("elev_1","elev_2","elev_3")
+miami.sf <- miami.sf[,!(names(miami.sf) %in% drop)]
 
 #Carport / Garage
 carportlist <- list("Carport - Aluminum - With Floor",
@@ -620,7 +650,8 @@ miami.sf <-
 miami.sf$Carport <- ifelse(miami.sf$Carport_1 == "TRUE" | 
                            miami.sf$Carport_2 == "TRUE" | 
                            miami.sf$Carport_3 == "TRUE", 1, 0)
-
+drop <- c("Carport_1","Carport_2","Carport_3")
+miami.sf <- miami.sf[,!(names(miami.sf) %in% drop)]
 
 # #AC <- not statistically significant
 # AClist <- list("Central A/C (Aprox 400 sqft/Ton)")
@@ -649,8 +680,7 @@ miami.sf$Carport <- ifelse(miami.sf$Carport_1 == "TRUE" |
 #                            miami.sf$Tiki_2 == "TRUE" | 
 #                            miami.sf$Tiki_3 == "TRUE", 1, 0)
 
-
-#Neighborhood data <- still not working
+#Neighborhood data
 nhoods <- st_read('https://opendata.arcgis.com/datasets/2f54a0cbd67046f2bd100fb735176e6c_0.geojson')
 
 miamibeach  <-
@@ -662,84 +692,142 @@ miamibeach.sf <-
   st_transform(st_crs(miami.base.sf)) %>%
   st_as_sf()
 
-nhoods <- st_union(nhoods, miamibeach) %>% ungroup()
+nhoods <- st_union(nhoods, miamibeach) %>% ungroup() 
 nhoods$LABEL[nhoods$FID==107] <- "Miami Beach"
 
 nhoods.sf <-
   nhoods %>%
   dplyr::select(LABEL, geometry) %>%
   st_transform(st_crs(miami.base.sf)) %>%
-  st_as_sf()
+  st_as_sf() 
+nhoods.sf <- st_cast(nhoods.sf, "POLYGON")
+plot(nhoods.sf)
 
-st_join(st_centroid(miami.sf), nhoods.sf, join = st_intersects, left = TRUE)
+miami.sf <- st_join(st_centroid(miami.sf), nhoods.sf, join = st_intersects, left = TRUE, largest = TRUE)
 
-miami.sf$Neighborhood <- st_join(miami.sf, nhoods.sf, join = st_intersects, left = TRUE)
+PricebyNHood <- 
+  miami.sf %>% group_by(LABEL.x) %>%
+  dplyr::summarise(AvgSalePrice = mean(SalePrice),
+                   MedSalePrice = median(SalePrice))
 
-# miami.sf <-
-#   miami.sf %>%
-#   mutate(Neighborhood = st_intersection(miami.sf, nhoods.sf)) %>%
-#   st_as_sf()
-# 
+PricebyNHood[order(-PricebyNHood$AvgSalePrice),]
+PricebyNHood[order(-PricebyNHood$MedSalePrice),]
 
-# miami.nhoods.sf <- st_join(, miami, join = st_intersects, left = TRUE)
-# 
-# ?st_intersects
-# 
-# head(miami.nhoods.sf)
-# 
-# merge(miami.sf, miami.nhoods.sf)
-# 
-# #st_intersection(miami.sf, nhoods.sf)
+topavgnhoodlist <- list("San Marco Island",
+                        "Biscayne Island",
+                        "South Grove Bayside",
+                        "Baypoint",
+                        "Belle Island")
+miami.sf <- miami.sf %>%
+  mutate(TopAvgNhood = LABEL.x %in% topavgnhoodlist)
+miami.sf$TopAvgNhood <- ifelse(miami.sf$TopAvgNhood == "TRUE", 1, 0)
+
+topmednhoodlist <- list("San Marco Island",
+                        "South Grove Bayside",
+                        "Belle Island",
+                        "Baypoint",
+                        "Fair Isle")
+miami.sf <- miami.sf %>%
+  mutate(TopMedNhood = LABEL.x %in% topmednhoodlist)
+miami.sf$TopMedNhood <- ifelse(miami.sf$TopMedNhood == "TRUE", 1, 0)
+
+# miami.sf <- miami.sf %>%
+#   mutate(SanMarcoIs = LABEL == "San Marco Island")
+# miami.sf$SanMarcoIs <- ifelse(miami.sf$SanMarcoIs == "TRUE", 1, 0)
+
+#Census Data
+#vars18 <- load_variables(2018, "acs5")
+#View(vars18)
+tracts18 <-
+  get_acs(geography = "tract", variables = c("B01003_001E", "B02001_002E", "B01002_001E",
+                                             "B19013_001E", "B25064_001E", "B17020_002E"),
+          year=2018, state="Florida", county="Miami-Dade", geometry=T, output = "wide") %>%
+  st_transform(st_crs(miami.sf))%>%
+  rename(TotalPop = B01003_001E,
+         Whites = B02001_002E,
+         MedAge = B01002_001E,
+         MedHHInc = B19013_001E,
+         MedRent = B25064_001E,
+         Poverty = B17020_002E) %>%
+  dplyr::select(-NAME, -starts_with("B")) %>%
+  mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop,0),
+         pctPov = ifelse(TotalPop > 0, Poverty / TotalPop,0),
+         year = "2018") %>%
+  dplyr::select(-Whites, -Poverty) 
+miami.sf <- st_join(st_centroid(miami.sf), tracts18, join = st_intersects, left = TRUE, largest = TRUE)
+
+# PopByHome <-
+#   j %>% 
+#   group_by(Property.Address) %>%
+#   dplyr::summarize(sumPop = sum(TotalPop),
+#                    PctWhite = mean(pctWhite),
+#                    AvgMedIncome = mean(MedHHInc)) %>%
+#   st_drop_geometry() %>%
+#   left_join(miami.join.sf) %>%
+#   st_sf()
+
+ggplot() +
+  geom_sf(data = miami.base.sf) +
+  geom_sf(data = PopByHome, aes(colour = AvgMedIncome), 
+          show.legend = "point", size = .75)
 
 
+# tracts18 <- st_join(tracts18, miami.sf)
+Centroids18 <- st_centroid(tracts18) 
+join <- st_join(tracts18, miami.sf, largest = TRUE) 
 
-ggplot() + geom_sf(data = nhoods.sf)
+# Near very expensive house
+neighbor.1M <- miami.sf %>% subset(SalePrice > 1000000)
+
+neighbor.1M.sf <-
+  neighbor.1M %>%
+  dplyr::select(geometry) %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.base.sf))%>%
+  distinct()
+
+miami.sf$neighbor.1M_1320 =
+  st_buffer(miami.sf, 1320) %>%
+  aggregate(mutate(neighbor.1M.sf, counter = 1),., sum) %>%
+  pull(counter)
+miami.sf$neighbor.1M_1320[is.na(miami.sf$neighbor.1M_1320)] <- 0
+
+neighbor.10M <- miami.sf %>% subset(SalePrice > 10000000)
+
+neighbor.10M.sf <-
+  neighbor.10M %>%
+  dplyr::select(geometry) %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.base.sf))%>%
+  distinct()
+
+miami.sf$neighbor.10M_1320 =
+  st_buffer(miami.sf, 1320) %>%
+  aggregate(mutate(neighbor.10M.sf, counter = 1),., sum) %>%
+  pull(counter)
+miami.sf$neighbor.10M_1320[is.na(miami.sf$neighbor.10M_1320)] <- 0
+
+#DJ Khaled
+colnames(miami.sf)
+DJKhaled <- miami.sf %>% subset(Property.Address == "4609 PINE TREE DR")
+
+DJKhaled.sf <-
+  DJKhaled %>%
+  dplyr::select(geometry) %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.base.sf))%>%
+  distinct()
+
+miami.sf$DJKhaled_1320 =
+  st_buffer(miami.sf, 1320) %>%
+  aggregate(mutate(DJKhaled.sf, counter = 1),., sum) %>%
+  pull(counter)
+miami.sf$DJKhaled_1320[is.na(miami.sf$DJKhaled_1320)] <- 0
 
 
-###############################
-# FEATURE ENGINEERING REFERENCE
-###############################
+ggplot() + geom_sf(data = tracts18) + geom_sf(data = miami.base.sf, fill = "transparent", colour = "red")
 
-#-----Buffer: Count within buffer of each house
-#Adding column to main dataset indicating the count of X within the buffer area
-miami.sf$bars.buffer_660 = #I think it would be good practice to list the number of feet in the column name
-  st_buffer(miami.sf, 660) %>%
-  aggregate(mutate(bars.sf, counter = 1),., sum) %>%
-  pull(counter) 
-miami.sf$bars.buffer_660[is.na(miami.sf$bars.buffer_660)] <- 0
 
-#generate a density plot
-ggplot() + geom_sf(data = miami.base.sf, fill = "grey40") +
-  stat_density2d(data = data.frame(st_coordinates(bars.sf)), 
-                 aes(X, Y, fill = ..level.., alpha = ..level..),
-                 size = 0.01, bins = 40, geom = 'polygon') +
-  scale_fill_gradient(low = "#25CB10", high = "#FA7800", name = "Density") +
-  scale_alpha(range = c(0.00, 0.35), guide = FALSE) +
-  labs(title = "Density of Bars, Miami") +
-  mapTheme()
-
-#-----Nearest Neighbor Feature Workflow
-#rename st_coordinates for brevity
-st_c <- st_coordinates
-
-#generate nearest neighbor values in the miami.sf dataset
-miami.sf <-
-  miami.sf %>%
-  mutate(
-    bars_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(bars.sf)), 1),
-    bars_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(bars.sf)), 2),
-    bars_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(bars.sf)), 3),
-    bars_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(bars.sf)), 4))
-
-#plot NN count over space - Should increase or decrease?
-miami.sf.plot <- miami.sf %>%
-  st_drop_geometry() %>%
-  dplyr::select(Folio, starts_with("bars_")) %>%
-  tidyr::pivot_longer(cols = -Folio, names_to = "bars_nn")
-
-ggplot(miami.sf.plot, aes(x = bars_nn, y = value, group = Folio)) +
-  geom_line(alpha = 0.05, color = "firebrick") +
-  theme_bw()
 
 ######################
 # EXPLORATORY ANALYSIS
@@ -758,7 +846,7 @@ ggplot(miami.sf.plot, aes(x = bars_nn, y = value, group = Folio)) +
 #Code for corr plots
 colnames(miami.sf)
 st_drop_geometry(miami.sf) %>% 
-  dplyr::select(SalePrice, Elevator) %>% #Choose variables from main dataset
+  dplyr::select(SalePrice, pctWhite.y.1, pctPov.y) %>% #Choose variables from main dataset
   gather(Variable, Value, -SalePrice) %>% #convert to long format
   ggplot(aes(Value, SalePrice)) + #plot
   geom_point(size = .5) + geom_smooth(method = "lm", se=F, colour = "#FA7800") +
@@ -772,7 +860,8 @@ colnames(miami.sf)
 numericVars <- 
   select_if(st_drop_geometry(miami.sf), is.numeric) %>%
   dplyr::select(SalePrice, AdjustedSqFt, Stories, Bed, Bath, bars_nn4, malls_nn4, 
-                hotel_nn4, BeachDist, CoastDist, Pool, LuxPool, Dock, Patio, Elevator) %>%
+                hotel_nn4, BeachDist, CoastDist, Pool, LuxPool, Dock, Patio, Elevator,
+                TopAvgNhood, TopMedNhood, Zip_33139, neighbor.10M_1320, pctWhite.y.1, pctPov.y) %>%
   na.omit()
 
 ggcorrplot(
@@ -800,9 +889,12 @@ miami.test <- sales[-inTrain,]
 #Multivariate regression
 reg1 <- lm(SalePrice ~ ., data = st_drop_geometry(miami.training) %>% 
              dplyr::select(SalePrice, marina_nn1, ent_nn4, Age, post2000,
-                           AdjustedSqFt, Stories, Bed, Bath, bars_nn4, malls_nn4, 
-                           hotel_nn4, BeachDist, CoastDist, Pool, LuxPool, Dock, Patio,
-                           Elevator))
+                           AdjustedSqFt, Stories, bars_nn4, malls_nn4, 
+                           hotel_nn4, BeachDist, Pool, LuxPool, Dock, Patio,
+                           Elevator, ent_nn4, ent_nn3, ent_nn2, ent_nn1, marina_nn4, 
+                           marina_nn3, marina_nn2, marina_nn1, restaurants_nn4, restaurants_nn3,
+                           restaurants_nn2, restaurants_nn1, Zip_33139, neighbor.10M_1320, pctWhite.y.1,
+                           pctPov.y, TopMedNhood))
 summary(reg1)
 
 #Predicting test values using regression
@@ -968,6 +1060,51 @@ ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
        y="Count",
        caption="Public Policy Analytics, Figure 6.8") +
   plotTheme()
+
+###############################
+# FEATURE ENGINEERING REFERENCE
+###############################
+
+#-----Buffer: Count within buffer of each house
+#Adding column to main dataset indicating the count of X within the buffer area
+miami.sf$bars.buffer_660 = #I think it would be good practice to list the number of feet in the column name
+  st_buffer(miami.sf, 660) %>%
+  aggregate(mutate(bars.sf, counter = 1),., sum) %>%
+  pull(counter) 
+miami.sf$bars.buffer_660[is.na(miami.sf$bars.buffer_660)] <- 0
+
+#generate a density plot
+ggplot() + geom_sf(data = miami.base.sf, fill = "grey40") +
+  stat_density2d(data = data.frame(st_coordinates(bars.sf)), 
+                 aes(X, Y, fill = ..level.., alpha = ..level..),
+                 size = 0.01, bins = 40, geom = 'polygon') +
+  scale_fill_gradient(low = "#25CB10", high = "#FA7800", name = "Density") +
+  scale_alpha(range = c(0.00, 0.35), guide = FALSE) +
+  labs(title = "Density of Bars, Miami") +
+  mapTheme()
+
+#-----Nearest Neighbor Feature Workflow
+#rename st_coordinates for brevity
+st_c <- st_coordinates
+
+#generate nearest neighbor values in the miami.sf dataset
+miami.sf <-
+  miami.sf %>%
+  mutate(
+    bars_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(bars.sf)), 1),
+    bars_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(bars.sf)), 2),
+    bars_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(bars.sf)), 3),
+    bars_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(bars.sf)), 4))
+
+#plot NN count over space - Should increase or decrease?
+miami.sf.plot <- miami.sf %>%
+  st_drop_geometry() %>%
+  dplyr::select(Folio, starts_with("bars_")) %>%
+  tidyr::pivot_longer(cols = -Folio, names_to = "bars_nn")
+
+ggplot(miami.sf.plot, aes(x = bars_nn, y = value, group = Folio)) +
+  geom_line(alpha = 0.05, color = "firebrick") +
+  theme_bw()
 
 ######################
 # Online JSON sources
