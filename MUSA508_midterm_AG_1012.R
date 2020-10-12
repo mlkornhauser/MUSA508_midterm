@@ -742,7 +742,7 @@ sales <- subset(miami.sf, SalePrice > 0)
 
 #Setting up test and training datasets
 inTrain <- createDataPartition( 
-  y = paste(sales$SalePrice), 
+  y = paste(sales$LABEL, sales$SalePrice), 
   p = .60, list = FALSE)
 
 miami.training <- sales[inTrain,] 
@@ -950,7 +950,7 @@ reg.nhood <- lm(SalePrice ~ ., data = as.data.frame(miami.training) %>%
                                 marina_nn3, marina_nn2, marina_nn1, restaurants_nn4, restaurants_nn3,
                                 restaurants_nn2, restaurants_nn1, Zip_33139, neighbor.10M_1320))
 
-# Getting an error when I try to run the below code - there's only one home in Oakland Grove and that's throwing this off
+# Create dataframe with goodness of fit metrics
 miami.test.nhood <-
   miami.test %>%
   mutate(Regression = "Neighborhood Effects",
@@ -960,12 +960,7 @@ miami.test.nhood <-
          SalePrice.APE = (abs(SalePrice - SalePrice.Predict)) / SalePrice)%>%
   filter(SalePrice < 5000000)
 
-mod2 <- glm(z~.-y, data=train, family="binomial")
-predict(mod2, newdata=test, type="response")
-
-mod2 <- glm(z~., data=train[,!colnames(train) %in% c("y")], family="binomial")
-predict(mod2, newdata=test, type="response")
-
+summary(reg.nhood)
 
 # MODEL ACCURACY
 bothRegressions <- 
