@@ -145,6 +145,27 @@ ggplot() +
 ##################################
 st_c <- st_coordinates #needed for the NN code
 
+#----Airport (OSM)
+airport <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>% 
+  add_osm_feature(key = 'aeroway', value = "aerodrome") %>%
+  osmdata_sf()
+airport <- 
+  airport$osm_polygons
+
+airport.sf <-
+  airport %>%
+  dplyr::select(geometry) %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.base.sf))%>%
+  distinct() %>% 
+  st_centroid()
+
+AirportDistance <- st_distance(miami.sf, airport.sf, by_element = TRUE)
+AirportDistance <- as.vector(AirportDistance)
+miami.sf$AirportDist <- AirportDistance
+
+ggplot() + geom_sf(data = miami.base.sf) + geom_sf(data = airport.sf)
+
 #----Assisted Living (GEOJSON)
 assisted_living <- st_read('https://opendata.arcgis.com/datasets/9bb1ec069f134635b6fcb0173408a23d_0.geojson')
 assisted.sf <- assisted_living%>%
@@ -208,6 +229,30 @@ BeachDistance <- st_distance(miami.sf, beaches.sf, by_element = TRUE)
 BeachDistance <- as.vector(BeachDistance)
 miami.sf$BeachDist <- BeachDistance
 
+#----Casino (OSM)
+casino <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>%
+  add_osm_feature(key = 'amenity', value = c("casino")) %>%
+  osmdata_sf()
+casino <-
+  casino$osm_polygons %>%
+  .[miami.base,]
+
+casino.sf <-
+  casino %>%
+  dplyr::select(geometry) %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.base.sf)) %>%
+  distinct() %>%
+  st_centroid
+
+miami.sf <-
+  miami.sf %>%
+  mutate(
+    casino_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(casino.sf)), 1),
+    casino_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(casino.sf)), 2))
+
+ggplot() + geom_sf(data = miami.base.sf) + geom_sf(data = casino.sf)
+
 #----Coastline (OSM)
 coast <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>%
   add_osm_feature(key = 'natural', value = c("coastline")) %>%
@@ -227,6 +272,86 @@ coast.sf <-
 CoastDistance <- st_distance(miami.sf, coast.sf)
 CoastDistance <- as.vector(CoastDistance)
 miami.sf$CoastDist <- CoastDistance
+
+#----Commercial (GEOJSON)
+commercial <- st_read('https://opendata.arcgis.com/datasets/fb8303c577c24ea386a91be7329842be_0.geojson')
+commercial.sf <- 
+  commercial %>%
+  st_transform(st_crs(miami.base.sf)) %>%
+  st_as_sf() 
+commercial.sf <- st_join(commercial.sf, miami.base.sf, join = st_intersects, left = FALSE)
+commercial.sf <-
+  commercial.sf %>%
+
+
+commercial_group <- commercial.sf %>% count(BUSDESC)
+commercial_group <- commercial_group[order(-commercial_group$n),]
+commercial_group 
+
+# Jewelry <- commercial.sf %>% subset(BUSDESC == "JEWELRY STORES\n")
+# miami.sf <- miami.sf %>%
+#   mutate(
+#     jewelry_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Jewelry)), 1),
+#     jewelry_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Jewelry)), 2),
+#     jewelry_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Jewelry)), 3),
+#     jewelry_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Jewelry)), 4))
+
+Beauty <- commercial.sf %>% subset(BUSDESC == "BEAUTY SALONS\n")
+Barber <- commercial.sf %>% subset(BUSDESC == "BARBER SHOPS\n")
+miami.sf <- miami.sf %>%
+  mutate(
+    barber_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Barber)), 1),
+    barber_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Barber)), 2),
+    barber_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Barber)), 3),
+    barber_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Barber)), 4))
+
+# Laundromat <- commercial.sf %>% subset(BUSDESC == "COIN-OPERATED LAUNDRIES AND DRYCLEANERS\n")
+# miami.sf <- miami.sf %>%
+#   mutate(
+#     laundromat_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Laundromat)), 1),
+#     laundromat_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Laundromat)), 2),
+#     laundromat_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Laundromat)), 3),
+#     laundromat_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Laundromat)), 4))
+
+CarRent <- commercial.sf %>% subset(BUSDESC == "PASSENGER CARS RENTAL\n")
+
+Tobacco <- commercial.sf %>% subset(BUSDESC == "TOBACCO STORES\n")
+Pet <- commercial.sf %>% subset(BUSDESC == "PET AND PET SUPPLIES STORES\n")
+Chiropractor <- commercial.sf %>% subset(BUSDESC == "OFFICES OF CHIROPRACTORS\n")
+miami.sf <- miami.sf %>%
+  mutate(
+    chiro_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Chiropractor)), 1),
+    chiro_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Chiropractor)), 2),
+    chiro_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Chiropractor)), 3),
+    chiro_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Chiropractor)), 4))
+
+# Lawyer <- commercial.sf %>% subset(BUSDESC == "OFFICES OF LAWYERS\n")
+# miami.sf <- miami.sf %>%
+#   mutate(
+#     lawyer_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Lawyer)), 1),
+#     lawyer_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Lawyer)), 2),
+#     lawyer_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Lawyer)), 3),
+#     lawyer_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Lawyer)), 4))
+
+Buffet <- commercial.sf %>% subset(BUSDESC == "CAFETERIAS, GRILL BUFFETS, AND BUFFETS\n")
+Used <- commercial.sf %>% subset(BUSDESC == "USED MERCHANDISE STORES\n")
+miami.sf <- miami.sf %>%
+  mutate(
+    used_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Used)), 1),
+    used_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Used)), 2),
+    used_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Used)), 3),
+    used_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Used)), 4))
+
+Liquor <- commercial.sf %>% subset(BUSDESC == "BEER, WINE & LIQUOR STORES\n")
+miami.sf <- miami.sf %>%
+  mutate(
+    liquor_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Liquor)), 1),
+    liquor_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Liquor)), 2),
+    liquor_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Liquor)), 3),
+    liquor_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Liquor)), 4))
+
+
+ggplot () + geom_sf(data = miami.base.sf) + geom_sf(data= CarRent)
 
 #----Entertainment (OSM)
 entertainment <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>%
@@ -511,6 +636,101 @@ miami.sf <-
 #   aggregate(mutate(schools.sf, counter = 1),., sum) %>%
 #   pull(counter)
 # miami.sf$schools.buffer_5280[is.na(miami.sf$schools.buffer_5280)] <- 0
+
+#----Supermarket (OSM)
+supermarkets <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>% 
+  add_osm_feature(key = 'shop', value = c("supermarket")) %>%
+  osmdata_sf()
+supermarkets <- 
+  supermarkets$osm_points %>%
+  .[miami.base,]
+
+supermarkets.sf <- 
+  supermarkets %>%
+  dplyr::select(geometry) %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.sf)) %>%
+  distinct()
+
+supermarket_count <- supermarkets %>% count(name) 
+supermarket_count <- supermarket_count[order(-supermarket_count$n),]
+supermarket_count
+
+miami.sf <-
+  miami.sf %>%
+  mutate(
+    Super_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(supermarkets.sf)), 1),
+    Super_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(supermarkets.sf)), 2),
+    Super_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(supermarkets.sf)), 3),
+    Super_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(supermarkets.sf)), 4))
+
+wholefoods <- 
+  supermarkets %>%
+  filter(name == "Whole Foods Market")
+
+wholefoods.sf <- 
+  wholefoods %>%
+  dplyr::select(geometry) %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.sf)) %>%
+  distinct()
+
+miami.sf <-
+  miami.sf %>%
+  mutate(
+    WF_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(wholefoods.sf)), 1),
+    WF_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(wholefoods.sf)), 2),
+    WF_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(wholefoods.sf)), 3))
+
+
+Publix <- supermarkets %>%
+  filter(name == "Publix" | name == "Publix Supermarket")
+
+Publix.sf <- 
+  Publix %>%
+  dplyr::select(geometry) %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.sf)) %>%
+  distinct()
+
+Tropical <- supermarkets %>%
+  filter(name == "Tropical Supermarket")
+Tropical.sf <- 
+  Tropical %>%
+  dplyr::select(geometry) %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.sf)) %>%
+  distinct()
+
+miami.sf <-
+  miami.sf %>%
+  mutate(
+    Trop_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Tropical.sf)), 1),
+    Trop_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Tropical.sf)), 2))
+
+ggplot() + geom_sf(data = miami.base.sf) + geom_sf(data = Tropical.sf)
+
+convenience <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>% 
+  add_osm_feature(key = 'shop', value = c("convenience")) %>%
+  osmdata_sf()
+convenience <- 
+  convenience$osm_points %>%
+  .[miami.base,]
+
+convenience.sf <- 
+  convenience %>%
+  dplyr::select(geometry) %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.sf)) %>%
+  distinct()
+
+miami.sf <-
+  miami.sf %>%
+  mutate(
+    convenience_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(convenience.sf)), 1),
+    convenience_nn2 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(convenience.sf)), 2),
+    convenience_nn3 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(convenience.sf)), 3),
+    convenience_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(convenience.sf)), 4))
 
 #----Water (GEOJSON)
 # water <- st_read('https://opendata.arcgis.com/datasets/b44862ec4a1447c09fc6ff0e3d70f81a_0.geojson') 
@@ -841,7 +1061,8 @@ miami.sf$MedAge[is.na(miami.sf$MedAge)] <- 0
 miami.sf$MedHHInc[is.na(miami.sf$MedHHInc)] <- 0
 miami.sf$pctWhite[is.na(miami.sf$pctWhite)] <- 0
 miami.sf$pctPov[is.na(miami.sf$pctPov)] <- 0
-miami.sf$pctHisp[is.na(miami.sf$Hisp)] <- 0
+miami.sf$pctHisp[is.na(miami.sf$pctHisp)] <- 0
+summary(tracts18)
 
 miami.sf <- 
   miami.sf %>%
@@ -854,7 +1075,7 @@ miami.sf <-
     pctPov30down = ifelse(pctPov < .30,1,0),
     pctHisp60up = ifelse(pctHisp > .6,1,0))
 
-hist(miami.sf$pctHisp)
+hist(miami.sf$pctHisp60up)
 
 summary(miami.sf)
 
@@ -865,28 +1086,17 @@ ggplot() +
   geom_sf(data = miami.base.sf, fill = "grey40") +
   geom_sf(data = miami.sf, aes(colour = MedAge), 
           show.legend = "point", size = .75) +
-  scale_colour_manual(values = palette5) +
   labs(title="Sales Price, Miami") +
   mapTheme()
 
 ######################
 # EXPLORATORY ANALYSIS
 ######################
-# #running list of vars: 
-# marina_nn1
-# ent_nn4
-# SalePrice, Age, post2000, AdjustedSqFt, 
-# Stories, Bed, Bath, bars_nn4,
-# ent_nn4, malls_nn4, hotel_nn4,
-# assisted_nn1, BeachDist, WaterDist, 
-# parks_660, parks_2640max
-# Pool, LuxPool, Dock
-# Hottub (meh)
 
 #Code for corr plots
 colnames(miami.sf)
 st_drop_geometry(miami.sf) %>% 
-  dplyr::select(SalePrice, assisted_nn1, assisted_nn2, assisted_nn3, assisted_nn4) %>% #Choose variables from main dataset
+  dplyr::select(SalePrice, Trop_nn1, Trop_nn2) %>% #Choose variables from main dataset
   gather(Variable, Value, -SalePrice) %>% #convert to long format
   ggplot(aes(Value, SalePrice)) + #plot
   geom_point(size = .5) + geom_smooth(method = "lm", se=F, colour = "#FA7800") +
@@ -899,10 +1109,11 @@ colnames(miami.sf)
 #Corr matrix
 numericVars <- 
   select_if(st_drop_geometry(miami.sf), is.numeric) %>%
-  dplyr::select(SalePrice, AdjustedSqFt, Stories, Bed, Bath, bars_nn4, malls_nn4, 
-                hotel_nn4, BeachDist, CoastDist, Pool, LuxPool, Dock, Patio, Elevator,
-                TopAvgNhood, TopMedNhood, Zip_33139, neighbor.10M_1320, 
-                MedHHInc, MedHHInc200kup, PriceperSQFT, pctHisp, pctHisp60up, BelowMedPrice_1320, assisted_nn1) %>%
+  dplyr::select(SalePrice, PriceperSQFT, AdjustedSqFt, Bed, malls_nn4,
+                hotel_nn4, BeachDist, Pool, LuxPool, Dock, Patio, Elevator,
+                TopAvgNhood, neighbor.10M_1320,
+                MedAge40up, MedHHInc, pctHisp, BelowMedPrice_1320, convenience_nn4, 
+                barber_nn4, assisted_nn4, AirportDist, casino_nn2) %>%
   na.omit()
 
 ggcorrplot(
@@ -921,7 +1132,7 @@ sales <- subset(miami.sf, SalePrice > 0)
 
 #Setting up test and training datasets
 inTrain <- createDataPartition( 
-  y = paste(sales$SalePrice), 
+  y = paste(sales$LABEL, sales$Bed), 
   p = .60, list = FALSE)
 
 miami.training <- sales[inTrain,] 
@@ -929,10 +1140,11 @@ miami.test <- sales[-inTrain,]
 
 #Multivariate regression
 reg1 <- lm(SalePrice ~ ., data = st_drop_geometry(miami.training) %>% 
-             dplyr::select(SalePrice, PriceperSQFT, AdjustedSqFt, Stories, Bed, Bath, bars_nn4, malls_nn4,
-                           hotel_nn4, marina_nn1, BeachDist, Pool, LuxPool, Dock, Patio, Elevator,
+             dplyr::select(SalePrice, PriceperSQFT, AdjustedSqFt, Bed, malls_nn4,
+                           hotel_nn4, BeachDist, Pool, LuxPool, Dock, Patio, Elevator,
                            TopAvgNhood, neighbor.10M_1320,
-                           MedAge40up, MedHHInc, pctHisp))
+                           MedAge40up, MedHHInc, pctHisp, BelowMedPrice_1320, convenience_nn4, 
+                           barber_nn4, assisted_nn4, casino_nn1))
 summary(reg1)
 
 #Predicting test values using regression
@@ -996,9 +1208,11 @@ fitControl <- trainControl(method = "cv",
 set.seed(717)
 reg1.cv <- 
   train(SalePrice ~ ., data = st_drop_geometry(sales) %>% 
-          dplyr::select(SalePrice, PriceperSQFT, AdjustedSqFt, Stories, Bed, Bath, bars_nn4, malls_nn4, 
-                        hotel_nn4, marina_nn1, BeachDist, Pool, LuxPool, Dock, Patio, Elevator,
-                        TopAvgNhood, neighbor.10M_1320, MedAge40up, MedHHInc, pctHisp, BelowMedPrice_1320), 
+          dplyr::select(SalePrice, PriceperSQFT, AdjustedSqFt, Bed, malls_nn4,
+                        hotel_nn4, BeachDist, Pool, LuxPool, Dock, Patio, Elevator,
+                        TopAvgNhood, neighbor.10M_1320,
+                        MedAge40up, MedHHInc, pctHisp, BelowMedPrice_1320, convenience_nn4, 
+                        barber_nn4, assisted_nn4, casino_nn1), 
         method = "lm", 
         trControl = fitControl, 
         na.action = na.pass)
@@ -1011,7 +1225,7 @@ reg1.cv
 reg1.cv.resample <- reg1.cv$resample #This line of code saves the values for each individual fold
 
 #Histogram of MAE
-ggplot(reg1.cv.resample, aes(x=MAE)) + geom_histogram(color = "grey40", fill = "#27fdf5") + 
+ggplot(reg1.cv.resample, aes(x=MAE)) + geom_histogram(color = "grey40", fill = "#27fdf5", bins = 50) + 
   labs(title="Histogram of Mean Average Error Across Folds",
        subtitle = "100 folds") +
   plotTheme()
@@ -1029,12 +1243,13 @@ nrow(cv_preds)
 map_preds <- sales %>% 
   rowid_to_column(var = "rowIndex") %>% 
   left_join(cv_preds, by = "rowIndex") %>% 
-  mutate(SalePrice.AbsError = abs(pred - SalePrice)) 
+  mutate(SalePrice.AbsError = abs(pred - SalePrice),
+         PercentError = (SalePrice.AbsError / SalePrice)*100) 
 
 ggplot() +
   geom_sf(data = miami.base.sf, fill = "grey40") +
   geom_sf(data = map_preds, aes(colour = q5(SalePrice.AbsError)),
-          show.legend = "point", size = .75) +
+          show.legend = "point", size = 1) +
   scale_colour_manual(values = palette5,
                       labels=qBr(map_preds,"SalePrice.AbsError"),
                       name="Quintile\nBreaks") +
@@ -1042,8 +1257,19 @@ ggplot() +
        subtitle = "OOF = 'Out Of Fold'") +
   mapTheme()
 
+ggplot() +
+  geom_sf(data = miami.base.sf, fill = "grey40") +
+  geom_sf(data = map_preds, aes(colour = q5(PercentError)),
+          show.legend = "point", size = .75) +
+  scale_colour_manual(values = palette5,
+                      labels=qBr(map_preds, "PercentError"),
+                      name="Quintile\nBreaks") +
+  labs(title="Absolute sale price errors on the OOF set",
+       subtitle = "OOF = 'Out Of Fold'") +
+  mapTheme()
+
 #THE SPATIAL LAG
-miami.test <-
+miami.baseline.test <-
   miami.test %>%
   mutate(Regression = "Baseline Regression",
          SalePrice.Predict = predict(reg1, miami.test),
@@ -1063,13 +1289,13 @@ spatialWeights <- nb2listw(neighborList, style="W")
 miami.sf$lagPrice <- lag.listw(spatialWeights, miami.sf$SalePrice)
 
 #errors
-coords.test <-  miami.test %>%
+coords.test <-  miami.baseline.test %>%
   dplyr::select(geometry) %>%
   st_centroid() %>%
   st_coordinates()
 neighborList.test <- knn2nb(knearneigh(coords.test, k_nearest_neighbors))
 spatialWeights.test <- nb2listw(neighborList.test, style="W")
-miami.test$lagPriceError <- lag.listw(spatialWeights.test, miami.test$SalePrice.AbsError)
+miami.baseline.test$lagPriceError <- lag.listw(spatialWeights.test, miami.test$SalePrice.AbsError)
 
 ggplot(miami.sf, aes(x=lagPrice, y=SalePrice)) +
   geom_point(colour = "#FA7800") +
@@ -1080,7 +1306,7 @@ ggplot(miami.sf, aes(x=lagPrice, y=SalePrice)) +
        y = "Sale Price") +
   plotTheme()
 
-ggplot(miami.test, aes(x=lagPriceError, y=SalePrice)) +
+ggplot(miami.baseline.test, aes(x=lagPriceError, y=SalePrice)) +
   geom_point(colour = "#FA7800") +
   geom_smooth(method = "lm", se = FALSE, colour = "#25CB10") +
   labs(title = "Error as a function of the spatial lag of price",
@@ -1090,7 +1316,7 @@ ggplot(miami.test, aes(x=lagPriceError, y=SalePrice)) +
   plotTheme()
 
 #MORAN'S I -- can't run this without the spatial weights object. Need to figure out knearneigh function
-moranTest <- moran.mc(miami.test$SalePrice.AbsError, 
+moranTest <- moran.mc(miami.baseline.test$SalePrice.AbsError, 
                       spatialWeights.test, nsim = 999)
 
 ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
@@ -1104,6 +1330,57 @@ ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
        caption="Public Policy Analytics, Figure 6.8") +
   plotTheme()
 
+## ACCOUNTING FOR NEIGHBORHOOD
+nhood_sum <- miami.baseline.test %>% 
+  group_by(LABEL) %>%
+  dplyr::summarize(meanPrice = mean(SalePrice, na.rm = T),
+                   meanPrediction = mean(SalePrice.Predict, na.rm = T),
+                   meanMAE = mean(SalePrice.AbsError, na.rm = T), 
+                   meanMAPE = mean(SalePrice.AbsError, na.rm = T) / mean(SalePrice, na.rm = T)) 
+
+library(kableExtra)
+
+nhood_sum %>% 
+  st_drop_geometry %>%
+  arrange(desc(meanMAE)) %>% 
+  kable() %>% kable_styling()
+
+
+reg.nhood <- lm(SalePrice ~ ., data = as.data.frame(miami.baseline.test) %>% 
+                  dplyr::select(LABEL, SalePrice, PriceperSQFT, AdjustedSqFt, Bed, malls_nn4,
+                                hotel_nn4, BeachDist, Pool, LuxPool, Dock, Patio, Elevator,
+                                TopAvgNhood, neighbor.10M_1320,
+                                MedAge40up, MedHHInc, pctHisp, BelowMedPrice_1320, convenience_nn4, 
+                                barber_nn4, assisted_nn4, casino_nn1))
+
+# Create dataframe with goodness of fit metrics
+miami.test.nhood <-
+  miami.baseline.test %>%
+  mutate(Regression = "Neighborhood Effects",
+         SalePrice.Predict = predict(reg.nhood, miami.test),
+         SalePrice.Error = SalePrice - SalePrice.Predict,
+         SalePrice.AbsError = abs(SalePrice - SalePrice.Predict),
+         SalePrice.APE = (abs(SalePrice - SalePrice.Predict)) / SalePrice) %>%
+  filter(SalePrice < 5000000)
+
+summary(reg.nhood)
+
+# MODEL ACCURACY
+bothRegressions <- 
+  rbind(
+    dplyr::select(miami.baseline.test, starts_with("SalePrice"), Regression, LABEL) %>%
+      mutate(lagPriceError = lag.listw(spatialWeights.test, SalePrice.Error)),
+    dplyr::select(miami.test.nhood, starts_with("SalePrice"), Regression, LABEL) %>%
+      mutate(lagPriceError = lag.listw(spatialWeights.test, SalePrice.Error)))
+
+st_drop_geometry(bothRegressions) %>%
+  gather(Variable, Value, -Regression, -Name) %>%
+  filter(Variable == "SalePrice.AbsError" | Variable == "SalePrice.APE") %>%
+  group_by(Regression, Variable) %>%
+  summarize(meanValue = mean(Value, na.rm = T)) %>%
+  spread(Variable, meanValue) %>%
+  kable()
+
 ################
 # CENSUS GROUPS
 ################
@@ -1111,8 +1388,10 @@ ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
 miami.sf <- 
   miami.sf %>%
   mutate(
-    AboveMHI = as.character(ifelse(MedHHInc > (mean(miami.sf$MedHHInc)),"Yes","No")),
+    AboveMHI = as.character(ifelse(MedHHInc >= (mean(miami.sf$MedHHInc)),"Yes","No")),
     BelowMHI = as.character(ifelse(MedHHInc < (mean(miami.sf$MedHHInc)),"Yes","No")))
+
+unique(miami.sf$AboveMHI)
 
 #Mapping properties in tracts with Above and Below Median MHI
 ggplot() +
@@ -1137,7 +1416,7 @@ rmse.Below <- caret::MAE(reg1_predict_Below, miami.BelowMHI$SalePrice)
 
 cat("Above MHI MAE: ", as.integer(rmse.Above), " \n","Below MHI MAE: ", as.integer(rmse.Below))
 
-#Dividing by Majority Hispanic
+#Subsetting by Majority Hispanic
 miami.sf <- 
   miami.sf %>%
   mutate(
@@ -1161,15 +1440,11 @@ reg1_predict_Hisp <- predict(reg1, newdata = miami.MajHisp)
 reg1_predict_NonHisp <- predict(reg1, newdata = miami.NonMajHisp)
 
 #Calculating the error terms
-rmse.Hisp <- caret::MAE(reg1_predict_Above, miami.MajHisp$SalePrice)
-rmse.NonHisp <- caret::MAE(reg1_predict_Below, miami.NonMajHisp$SalePrice)
+rmse.Hisp <- caret::MAE(reg1_predict_Hisp, miami.MajHisp$SalePrice)
+rmse.NonHisp <- caret::MAE(reg1_predict_NonHisp, miami.NonMajHisp$SalePrice)
 cat("Hisp MAE: ", as.integer(rmse.Hisp), "\n","Non Hisp MAE: ", as.integer(rmse.NonHisp))
 
 #These aren't quite working yet. Having a warning about multiples - may check on Canvas.
-
-
-
-
 
 ###############################
 # FEATURE ENGINEERING REFERENCE
@@ -1233,9 +1508,9 @@ culture <- st_read('https://opendata.arcgis.com/datasets/70c48f0eb067448c8a787cf
 culture <- st_join(culture, muni, join = st_intersects, left = FALSE)
 
 commercial <- st_read('https://opendata.arcgis.com/datasets/fb8303c577c24ea386a91be7329842be_0.geojson')%>%
-  st_transform(st_crs(miami)) %>%
+  st_transform(st_crs(miami.base)) %>%
   st_as_sf() 
-commercial <- st_join(commercial, muni, join = st_intersects, left = FALSE)
+commercial <- st_join(commercial, miami.base.sf, join = st_intersects, left = FALSE)
 
 rail <- st_read('https://opendata.arcgis.com/datasets/ee3e2c45427e4c85b751d8ad57dd7b16_0.geojson')%>%
   st_transform(st_crs(miami))%>%
@@ -1245,4 +1520,6 @@ rail <- st_join(rail, muni, join = st_intersects, left = FALSE)
 #Looking at types ofbusinesses
 commercial_group <- commercial %>% count(BUSDESC)
 commercial_group <- commercial_group[order(-commercial_group$n),]
-commercial_group
+View(commercial_group)
+
+ggplot () + geom_sf(data = commercial_group, aes(BUSDESC == "JEWELRY STORES"))
