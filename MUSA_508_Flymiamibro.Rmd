@@ -105,7 +105,7 @@ nn_function <- function(measureFrom,measureTo,k) {
 
 Known for its beautiful beaches, vibrant culture, and lively nightlife, Miami and neighboring Miami Beach are a major hub for business and tourism. Located at the southeastern tip of Florida, the cities are a popular destination for domestic and international visitors and act as an economic powerhouse for the region. But how do these local amenities factor into home prices for residents? We developed a machine-learning model to predict sale prices to account for these local features that Miami residents value when buying a home. We strived to make the model both accurate and generalizable, so the model can predict on new data. [Explain this better] The model's ability to generalize in new contexts means it is useful for a variety of needs, from market studies in the development world to property tax assessment in the public realm.
 
-Creating this model is a difficult task with unavoidable imperfections. Even within Miami and Miami Beach, the housing market is incredibly varied in terms of price, location and nearby amenities. While it is imposible to account for all features that factor into a home's sale price, this model looksc at three main and fairly comprehensive categories to predict home prices: the home's physical charateristics, nearby public services and amenities, and the prices of nearby homes. To test the model's generalizability, we split our data into two groups of test and train  data. We ran the model on the train dataset and then on the test dataset to assess how well the model can be used to predict new data.
+Creating this model is a difficult task with unavoidable imperfections. Even within Miami and Miami Beach, the housing market is incredibly varied in terms of price, location and nearby amenities. While it is imposible to account for all features that factor into a home's sale price, this model looks at three main and fairly comprehensive categories to predict home prices: the home's physical charateristics, nearby public services and amenities, and the prices of nearby homes. To test the model's generalizability, we split our data into two groups of test and train  data. We ran the model on the train dataset and then on the test dataset to assess how well the model can be used to predict new data.
 
 On average, we predicted housing prices within [$xxxx] and [%%%] of the sales price. In particular, our model was successful in predicting high value properties located in Miami Beach and along the coast of Miami. In general, the model was less successful in predicting home prices in the western, majority-Hispanic neighborhoods of Miami.
 
@@ -562,4 +562,244 @@ ggplot() +
        subtitle = "Figure X.X") + 
   mapTheme()
 
+```
+
+
+Once we loaded, analyzed, and engineered our data variables for our model, we tested the model both for accuracy and generalizability. We divided our housing sales data and features into separate training and test sets. The training set is then used to test the generalizability of the model by accurately predicting home sale prices on a different set of data.
+
+The summary output of the model provides both the significance values for each of the utilized variables to test sales as well as statistics that inform how accurate the model is in predicting home prices. The p-value, provided for each variable, indicates the confidence level that the variable is a good predictor of home price. All of the utilized variables in the model are highly significant and our R^2 value of 0.91 indicates that our features account for 91% of variation in home price.
+```{r}
+#Subset miami dataframe into all homes with listed sale prices
+sales <- subset(miami.sf, SalePrice > 0)
+
+#Setting up test and training datasets
+inTrain <- createDataPartition( 
+  y = paste(sales$LABEL, sales$Bed), 
+  p = .60, list = FALSE)
+
+miami.training <- sales[inTrain,] 
+miami.test <- sales[-inTrain,]  
+
+#Multivariate regression
+reg1 <- lm(SalePrice ~ ., data = st_drop_geometry(miami.training) %>% 
+             dplyr::select(SalePrice, PriceperSQFT, AdjustedSqFt, Bed, malls_nn4,
+                           hotel_nn4, BeachDist, Pool, LuxPool, Dock, Patio, Elevator,
+                           TopAvgNhood, neighbor.10M_1320,
+                           MedAge40up, MedHHInc, pctHisp, BelowMedPrice_1320, convenience_nn4, 
+                           barber_nn4, assisted_nn4, casino_nn1))
+stargazer(
+  reg1,
+  type = "html",
+  title = "Linear Model Summary Table",
+  dep.var.caption = " ",
+  dep.var.labels = "Model Features")
+```
+
+In order to account for the generalizability of the model, 
+
+```{r}
+ErrorTable <- 
+  miami.test %>% 
+  dplyr::summarize(meanMAE = mean(SalePrice.AbsError, na.rm = T), 
+                   meanMAPE = mean(SalePrice.AbsError, na.rm = T) / mean(SalePrice, na.rm = T)) 
+
+ErrorTable %>% 
+  st_drop_geometry %>%
+  arrange(desc(meanMAE)) %>% 
+  kable(caption = "MAE and MAPE for Test Set Data") %>% kable_styling()
+```
+
+##Cross-validation
+###Plotting Accuracy metrics - predicted prices as a function of observed prices
+```{r}
+preds.train <- data.frame(pred   = predict(reg1),
+                          actual = miami.training$SalePrice,
+                          source = "training data")
+preds.test  <- data.frame(pred   = reg1_predict,
+                          actual = miami.test$SalePrice,
+                          source = "testing data")
+preds <- rbind(preds.train, preds.test)
+head(preds)
+
+ggplot(preds, aes(x = pred, y = actual, color = source)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "green") +
+  geom_abline(color = "orange") +
+  coord_equal() +
+  theme_bw() +
+  facet_wrap(~source, ncol = 2) +
+  labs(title = "Comparing predictions to actual values",
+       x = "Predicted Value",
+       y = "Actual Value") +
+  theme(
+    legend.position = "none"
+  )
+```
+
+####Generalizability
+We then looked to test the generalizability of our model using a cross-validation test. Cross-validation is used to estimate how well our model predicts home sales prices on new data. We split our data into 100 groups - one group acts as the test set with the remaining 99 groups acts as the training set. This process is done for each group, resulting in 100 "scores" telling us how well our model did for each sample. 
+
+```{r}
+fitControl <- trainControl(method = "cv", 
+                           number = 100,
+                           savePredictions = TRUE)
+
+set.seed(717)
+reg1.cv <- 
+  train(SalePrice ~ ., data = st_drop_geometry(sales) %>% 
+          dplyr::select(SalePrice, PriceperSQFT, AdjustedSqFt, Bed, malls_nn4,
+                        hotel_nn4, BeachDist, Pool, LuxPool, Dock, Patio, Elevator,
+                        TopAvgNhood, neighbor.10M_1320,
+                        MedAge40up, MedHHInc, pctHisp, BelowMedPrice_1320, convenience_nn4, 
+                        barber_nn4, assisted_nn4, casino_nn1), 
+        method = "lm", 
+        trControl = fitControl, 
+        na.action = na.pass)
+
+reg1.cv 
+```
+
+Our average MAE of 329,389.5 is similar to the MAE of our initial test, but our standard deviation of 88,895 suggests there's significant variation across our 100 groups. The histogram below confirms the variation showing a wide distributions of errors. This indicates that our model requires continued refinement in order for it to be generalizable to new housing sale price data.
+```{r}
+#Standard Deviation and Histogram of MAE
+reg1.cv.resample <- reg1.cv$resample
+
+sd(reg1.cv.resample$MAE)
+
+ggplot(reg1.cv.resample, aes(x=MAE)) + geom_histogram(color = "grey40", fill = "#27fdf5", bins = 50) + 
+  labs(title="Histogram of Mean Average Error Across Folds",
+       subtitle = "100 folds") +
+  plotTheme()
+```
+
+The two maps below identify our sale price errors across Miami. The left map identifies the errors in absolute terms, or dollar value and the left map indentifies errors as a percent of home sale price. The maps indicate that while the greatest variation in absolute terms occurs in areas with the highest home sale prices (i.e. Miami Beach and Southwest Coconut Grove), as a percent of sale price the largest percent errors occur in neighborhoods to the northwest and west of downtown.
+```{r}
+ErrorPlot1 <- ggplot() +
+  geom_sf(data = miami.base.sf, fill = "grey40") +
+  geom_sf(data = map_preds, aes(colour = q5(SalePrice.AbsError)),
+          show.legend = "point", size = 1) +
+  scale_colour_manual(values = palette5,
+                      labels=qBr(map_preds,"SalePrice.AbsError"),
+                      name="Quintile\nBreaks") +
+  labs(title="Absolute sale price errors on the OOF set",
+       subtitle = "OOF = 'Out Of Fold'") +
+  mapTheme()
+
+ErrorPlot2 <- ggplot() +
+  geom_sf(data = miami.base.sf, fill = "grey40") +
+  geom_sf(data = map_preds, aes(colour = q5(PercentError)),
+          show.legend = "point", size = .75) +
+  scale_colour_manual(values = palette5,
+                      labels=qBr(map_preds, "PercentError"),
+                      name="Quintile\nBreaks") +
+  labs(title="Absolute sale price errors on the OOF set",
+       subtitle = "OOF = 'Out Of Fold'") +
+  mapTheme()
+
+grid.arrange(ErrorPlot1, ErrorPlot2, ncol=2)
+
+```
+
+
+We then tested for evidence of clustering of home prices in Miami, or the degree to which home sales are similar to the home sales around them. This allows us to understand the relationship of home sales to one another and whether or not home sales cluster in the city. We did this by taking the average home sale prices of the five closest homes to each property in the dataset. We then plotted the function, which shows a statistically significant positive relationship between home sale price and the mean sale price of its five closest neighbors. This means that as the sale price of a home increases so do the prices of surrounding homes. 
+
+We also plotted the model's errors in predicting home prices, which similarly show a statistically significant positive relationship with sale price. This means that as home prices increase so do the home price errors of neighboring homes.
+```{r}
+miami.baseline.test <-
+  miami.test %>%
+  mutate(Regression = "Baseline Regression",
+         SalePrice.Predict = predict(reg1, miami.test),
+         SalePrice.Error = SalePrice.Predict - SalePrice,
+         SalePrice.AbsError = abs(SalePrice.Predict - SalePrice),
+         SalePrice.APE = (abs(SalePrice.Predict - SalePrice)) / SalePrice.Predict)
+
+k_nearest_neighbors = 5
+
+coords <- miami.sf %>%
+  dplyr::select(geometry) %>%
+  st_centroid() %>%
+  st_coordinates()
+
+neighborList <- knn2nb(knearneigh(coords, k_nearest_neighbors))
+spatialWeights <- nb2listw(neighborList, style="W")
+miami.sf$lagPrice <- lag.listw(spatialWeights, miami.sf$SalePrice)
+
+#errors
+coords.test <-  miami.baseline.test %>%
+  dplyr::select(geometry) %>%
+  st_centroid() %>%
+  st_coordinates()
+neighborList.test <- knn2nb(knearneigh(coords.test, k_nearest_neighbors))
+spatialWeights.test <- nb2listw(neighborList.test, style="W")
+miami.baseline.test$lagPriceError <- lag.listw(spatialWeights.test, miami.test$SalePrice.AbsError)
+
+spatial_lag1 <- ggplot(miami.sf, aes(x=lagPrice, y=SalePrice)) +
+  geom_point(colour = "#FA7800") +
+  geom_smooth(method = "lm", se = FALSE, colour = "#25CB10") +
+  labs(title = "Price as a function of the spatial lag of price",
+       caption = "Public Policy Analytics, Figure 6.6",
+       x = "Spatial lag of price (Mean price of 5 nearest neighbors)",
+       y = "Sale Price") +
+  plotTheme()
+
+spatiallag2 <- ggplot(miami.baseline.test, aes(x=lagPriceError, y=SalePrice)) +
+  geom_point(colour = "#FA7800") +
+  geom_smooth(method = "lm", se = FALSE, colour = "#25CB10") +
+  labs(title = "Error as a function of the spatial lag of price",
+       caption = "",
+       x = "Spatial lag of errors (Mean error of 5 nearest neighbors)",
+       y = "Sale Price") +
+  plotTheme()
+
+grid.arrange(spatiallag1, spatiallag2, ncol=2)
+```
+
+We then analyzed whether and to what degree sale price errors cluster within Miami using Moran's I test, a statistic that identifies spacial clustering. The test and provided histogram confirmat that the model errors are spatially correlated, meaning that they do cluster. 
+ 
+```{r}
+moranTest <- moran.mc(miami.baseline.test$SalePrice.AbsError, 
+                      spatialWeights.test, nsim = 999)
+moranTest
+```
+
+```{r}
+ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
+  geom_histogram(binwidth = 0.01) +
+  geom_vline(aes(xintercept = moranTest$statistic), colour = "#FA7800",size=1) +
+  scale_x_continuous(limits = c(-1, 1)) +
+  labs(title="Observed and permuted Moran's I",
+       subtitle= "Observed Moran's I in orange",
+       x="Moran's I",
+       y="Count",
+       caption="Public Policy Analytics, Figure 6.8") +
+  plotTheme()
+```
+
+We then looked at the mean average price error by neighborhood...
+```{r}
+nhood_sum <- miami.baseline.test %>% 
+  group_by(LABEL) %>%
+  dplyr::summarize(meanPrice = mean(SalePrice, na.rm = T),
+                   meanPrediction = mean(SalePrice.Predict, na.rm = T),
+                   meanMAE = mean(SalePrice.AbsError, na.rm = T), 
+                   meanMAPE = mean(SalePrice.AbsError, na.rm = T) / mean(SalePrice, na.rm = T)) 
+
+nhood_sum %>% 
+  st_drop_geometry %>%
+  arrange(desc(meanMAE)) %>% 
+  kable() %>% kable_styling()
+```
+
+```{r}
+st_drop_geometry(nhood_sum) %>%
+  group_by(LABEL) %>%
+  ungroup() %>%
+  left_join(nhoods.sf) %>%
+    st_sf() %>%
+    ggplot() +
+      geom_sf(aes(fill = meanMAPE)) +
+      scale_fill_gradient(low = palette5[1], high = palette5[5],
+                        name = "MAPE") +
+    labs(title = "Mean test set MAPE by neighborhood") +
+    mapTheme()
 ```
