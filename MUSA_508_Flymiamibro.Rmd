@@ -616,7 +616,7 @@ Needless to say, the process of generating our model was iterative and involved 
 
 ##Results
 
-Once we loaded, analyzed, and engineered our data variables for our model, we tested the model both for accuracy and generalizability. We divided our housing sales data and features into separate training and test sets. The training set is then used to test the generalizability of the model by accurately predicting home sale prices on a different set of data.
+Once we loaded, analyzed, and engineered our data variables for our model, we tested the model both for accuracy and generalizability to ensure that we can apply our model to other datasets. We divided our housing sales data and features into separate training and test sets. We used the training set to test the generalizability of the model by accurately predicting home sale prices on a different set of data.
 
 The summary output of the model provides both the significance values for each of the utilized variables to test sales as well as statistics that inform how accurate the model is in predicting home prices. The p-value, provided for each variable, indicates the confidence level that the variable is a good predictor of home price. All of the utilized variables in the model are highly significant and our R^2 value of 0.91 indicates that our features account for 91% of variation in home price.
 ```{r}
@@ -647,29 +647,33 @@ stargazer(
   dep.var.labels = "Model Features")
 ```
 
-In order to account for the generalizability of the model, 
-
+We then looked calculated how well our model predicts on new data, our test set, which indicate a mean absolute error (MAE) of **$316,467**. This indicates that on average, we are either under or over predicting home sale prices by **$316,467**. The mean absolute percent error (MAPE), confirms this issue indicating that, on average, our model errs by 33%.
 ```{r}
 miami.test <-
   miami.test %>%
-  mutate(SalePrice.Predict = predict(reg1, miami.test),
+  mutate(Regression = "Baseline Regression",
+         SalePrice.Predict = predict(reg1, miami.test),
          SalePrice.Error = SalePrice.Predict - SalePrice,
          SalePrice.AbsError = abs(SalePrice.Predict - SalePrice),
          SalePrice.APE = (abs(SalePrice.Predict - SalePrice)) / SalePrice.Predict)
 
 ErrorTable <- 
   miami.test %>% 
-  dplyr::summarize(meanMAE = mean(SalePrice.AbsError, na.rm = T), 
-                   meanMAPE = mean(SalePrice.AbsError, na.rm = T) / mean(SalePrice, na.rm = T)) 
+  dplyr::summarize(Regression = "Baseline Regression",
+                   MAE = mean(SalePrice.AbsError, na.rm = T), 
+                   MAPE = mean(SalePrice.AbsError, na.rm = T) / mean(SalePrice, na.rm = T)) 
 
 ErrorTable %>% 
   st_drop_geometry %>%
-  arrange(desc(meanMAE)) %>% 
+  group_by(Regression) %>%
+  arrange(desc(MAE)) %>% 
   kable(caption = "MAE and MAPE for Test Set Data") %>% kable_styling()
 ```
 
 ##Cross-validation
 ###Plotting Accuracy metrics - predicted prices as a function of observed prices
+The plots below indicate how well our model is predicting home prices in both our training and test set data. The orange line indicates a perfect fit, meaning that our predicted home sale values match those of the actual values. As seen in the bottom right scatterplot, we are almost perfectly predicting home sale prices  in accordance with their actual values. In our testing data, our model is slightly overpredicting home prices, especially on higher value homes.
+
 ```{r}
 reg1_predict <- predict(reg1, newdata = miami.test)
 
@@ -701,7 +705,7 @@ ggplot(preds, aes(x = pred, y = actual, color = source)) +
 ```
 
 ####Generalizability
-We then looked to test the generalizability of our model using a cross-validation test. Cross-validation is used to estimate how well our model predicts home sales prices on new data. We split our data into 100 groups - one group acts as the test set with the remaining 99 groups acts as the training set. This process is done for each group, resulting in 100 "scores" telling us how well our model did for each sample. 
+We then looked to test the generalizability of our model using a cross-validation test. Cross-validation is used to estimate how well our model predicts home sales prices on new data. We split our data into 100 groups - one group acts as the test set with the remaining 99 groups acting as the training set. This process is done for each group, resulting in 100 "scores" telling us how well our model did for each sample. 
 
 ```{r}
 fitControl <- trainControl(method = "cv", 
@@ -723,7 +727,7 @@ reg1.cv <-
 reg1.cv 
 ```
 
-Our average MAE of 329,389.5 is similar to the MAE of our initial test, but our standard deviation of 88,895 suggests there's significant variation across our 100 groups. The histogram below confirms the variation showing a wide distributions of errors. This indicates that our model requires continued refinement in order for it to be generalizable to new housing sale price data.
+Our average MAE of **$329,389.5** is similar to the MAE of our initial test, but our standard deviation of **$88,895** suggests there's significant variation across our 100 groups. The histogram below confirms the variation showing a wide distributions of errors. This indicates that our model requires continued refinement in order for it to be generalizable to new housing sale price data.
 ```{r}
 #Standard Deviation and Histogram of MAE
 reg1.cv.resample <- reg1.cv$resample
@@ -736,7 +740,7 @@ ggplot(reg1.cv.resample, aes(x=MAE)) + geom_histogram(color = "grey40", fill = "
   plotTheme()
 ```
 
-The two maps below identify our sale price errors across Miami. The left map identifies the errors in absolute terms, or dollar value and the left map indentifies errors as a percent of home sale price. The maps indicate that while the greatest variation in absolute terms occurs in areas with the highest home sale prices (i.e. Miami Beach and Southwest Coconut Grove), as a percent of sale price the largest percent errors occur in neighborhoods to the northwest and west of downtown.
+The two maps below identify our sale price errors across Miami. The left map identifies the errors in absolute terms, or dollar value, and the left map indentifies errors as a percent of home sale price. The maps indicate that while the greatest variation in absolute terms occurs in areas with the highest home sale prices (i.e. Miami Beach and Southwest Coconut Grove), as a percent of sale price the largest percent errors occur in neighborhoods to the northwest and west of downtown.
 ```{r}
 cv_preds <- reg1.cv$pred
 
@@ -865,7 +869,6 @@ nhood_sum %>%
 ```{r}
 st_drop_geometry(nhood_sum) %>%
   group_by(LABEL.y) %>%
-  ungroup() %>%
   left_join(nhoods.sf) %>%
     st_sf() %>%
     ggplot() +
@@ -883,4 +886,8 @@ secret_preds <- predict(reg1, newdata = secret_data)
 
 output_preds <- data.frame(prediction = secret_preds, Folio = secret_data$Folio, team_name = "Flymiamibro")
 write.csv(output_preds, "Flymiamibro.csv")
+```
+
+```{r}
+
 ```
