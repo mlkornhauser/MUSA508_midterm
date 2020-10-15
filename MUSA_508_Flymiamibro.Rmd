@@ -148,7 +148,7 @@ xmax = st_bbox(miami.base)[[3]]
 ymax = st_bbox(miami.base)[[4]]
 
 #Housing data
-miami <- st_read('data/studentsData.geojson')
+miami <- st_read('/Users/mori_ghazzawi/Documents/GitHub/MUSA508_midterm/data/studentsData.geojson')
 miami.sf  <- miami %>% 
   st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326, agr = "constant") %>%
   st_transform(st_crs(miami.base.sf))
@@ -363,7 +363,7 @@ miami.sf <-
   mutate(malls_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(malls.sf)), 4))
 
 head(miami.sf) %>%
-  dplyr::select(assisted_nn4, BeachDist, barber_nn4, casino_nn2, convenience_nn4, hotel_nn4, malls_nn4) %>%
+  dplyr::select(assisted_nn4, BeachDist, barber_nn4, casino_nn1, convenience_nn4, hotel_nn4, malls_nn4) %>%
   st_drop_geometry()
 ```
 
@@ -396,6 +396,7 @@ miami.sf$TotalPop[is.na(miami.sf$TotalPop)] <- 0
 miami.sf$MedAge[is.na(miami.sf$MedAge)] <- 0
 miami.sf$MedHHInc[is.na(miami.sf$MedHHInc)] <- 0
 miami.sf$pctHisp[is.na(miami.sf$pctHisp)] <- 0
+miami.sf$MedAge40up[is.na(miami.sf$MedAge40up)] <- 0
 ```
 ```{r}
 head(miami.sf) %>%
@@ -408,18 +409,26 @@ Finally, to account for the spatial process of home prices, we engineered variab
 ```{r}
 #read in data
 nhoods <- st_read('https://opendata.arcgis.com/datasets/2f54a0cbd67046f2bd100fb735176e6c_0.geojson', quiet = TRUE)
+
+nhoods_1 <-
+  nhoods %>% 
+  st_drop_geometry() %>%
+  distinct(FID, .keep_all = TRUE)
+
+nhoods <- merge(nhoods,nhoods_1,by="FID")
+
 miamibeach  <-
   st_read("https://opendata.arcgis.com/datasets/5ece0745e24b4617a49f2e098df8117f_0.geojson", quiet = TRUE) %>%
   filter(NAME == "MIAMI BEACH")
 
 #add Miami Beach to Miami neighborhood shapefile
 nhoods <- st_union(nhoods, miamibeach) %>% ungroup() 
-nhoods$LABEL[nhoods$FID==107] <- "Miami Beach"
+nhoods$LABEL.y[nhoods$FID==107] <- "Miami Beach"
 
 #Convert new neighborhoods shapefile into sf object and project
 nhoods.sf <-
   nhoods %>%
-  dplyr::select(LABEL, geometry) %>%
+  dplyr::select(LABEL.y, geometry) %>%
   st_transform(st_crs(miami.base.sf)) %>%
   st_as_sf() 
 nhoods.sf <- st_cast(nhoods.sf, "POLYGON")
@@ -445,7 +454,7 @@ topavgnhoodlist <- list("San Marco Island",
                         "Baypoint",
                         "Belle Island")
 miami.sf <- miami.sf %>%
-  mutate(TopAvgNhood = LABEL %in% topavgnhoodlist)
+  mutate(TopAvgNhood = LABEL.y %in% topavgnhoodlist)
 miami.sf$TopAvgNhood <- ifelse(miami.sf$TopAvgNhood == "TRUE", 1, 0)
 
 #Number of sale prices over $10m within half-mile buffer
@@ -487,7 +496,7 @@ VarSummary_internal <- miami.sf %>%
   dplyr::select(PriceperSQFT, AdjustedSqFt, Bed, Pool, LuxPool, Dock, Patio, Elevator) %>%
   st_drop_geometry() 
 VarSummary_amenity <- miami.sf %>%
-  dplyr::select(assisted_nn4, BeachDist, barber_nn4, casino_nn2, convenience_nn4, hotel_nn4, malls_nn4) %>%
+  dplyr::select(assisted_nn4, BeachDist, barber_nn4, casino_nn1, convenience_nn4, hotel_nn4, malls_nn4) %>%
   st_drop_geometry() 
 VarSummary_census <- miami.sf %>%
   dplyr::select(MedAge40up, MedHHInc, pctHisp) %>%
@@ -513,7 +522,7 @@ numericVars <-
   select_if(st_drop_geometry(miami.sf), is.numeric) %>%
   dplyr::select(SalePrice,
                 PriceperSQFT, AdjustedSqFt, Bed, Pool, LuxPool, Dock, Patio, Elevator,
-                assisted_nn4, BeachDist, barber_nn4, casino_nn2, convenience_nn4, hotel_nn4, malls_nn4,
+                assisted_nn4, BeachDist, barber_nn4, casino_nn1, convenience_nn4, hotel_nn4, malls_nn4,
                 MedAge40up, MedHHInc, pctHisp, TopAvgNhood, neighbor.10M_1320, BelowMedPrice_1320) %>%
   na.omit()
 
@@ -616,7 +625,7 @@ sales <- subset(miami.sf, SalePrice > 0)
 
 #Setting up test and training datasets
 inTrain <- createDataPartition( 
-  y = paste(sales$LABEL, sales$Bed), 
+  y = paste(sales$LABEL.y, sales$Bed), 
   p = .60, list = FALSE)
 
 miami.training <- sales[inTrain,] 
@@ -662,14 +671,19 @@ ErrorTable %>%
 ##Cross-validation
 ###Plotting Accuracy metrics - predicted prices as a function of observed prices
 ```{r}
+reg1_predict <- predict(reg1, newdata = miami.test)
+
+rmse.train <- caret::MAE(predict(reg1), miami.training$SalePrice)
+rmse.test <- caret::MAE(reg1_predict, miami.test$SalePrice)
+
 preds.train <- data.frame(pred   = predict(reg1),
                           actual = miami.training$SalePrice,
                           source = "training data")
 preds.test  <- data.frame(pred   = reg1_predict,
                           actual = miami.test$SalePrice,
                           source = "testing data")
+
 preds <- rbind(preds.train, preds.test)
-head(preds)
 
 ggplot(preds, aes(x = pred, y = actual, color = source)) +
   geom_point() +
@@ -724,6 +738,14 @@ ggplot(reg1.cv.resample, aes(x=MAE)) + geom_histogram(color = "grey40", fill = "
 
 The two maps below identify our sale price errors across Miami. The left map identifies the errors in absolute terms, or dollar value and the left map indentifies errors as a percent of home sale price. The maps indicate that while the greatest variation in absolute terms occurs in areas with the highest home sale prices (i.e. Miami Beach and Southwest Coconut Grove), as a percent of sale price the largest percent errors occur in neighborhoods to the northwest and west of downtown.
 ```{r}
+cv_preds <- reg1.cv$pred
+
+map_preds <- sales %>% 
+  rowid_to_column(var = "rowIndex") %>% 
+  left_join(cv_preds, by = "rowIndex") %>% 
+  mutate(SalePrice.AbsError = abs(pred - SalePrice),
+         PercentError = (SalePrice.AbsError / SalePrice)*100) 
+
 ErrorPlot1 <- ggplot() +
   geom_sf(data = miami.base.sf, fill = "grey40") +
   geom_sf(data = map_preds, aes(colour = q5(SalePrice.AbsError)),
@@ -792,7 +814,7 @@ spatial_lag1 <- ggplot(miami.sf, aes(x=lagPrice, y=SalePrice)) +
        y = "Sale Price") +
   plotTheme()
 
-spatiallag2 <- ggplot(miami.baseline.test, aes(x=lagPriceError, y=SalePrice)) +
+spatial_lag2 <- ggplot(miami.baseline.test, aes(x=lagPriceError, y=SalePrice)) +
   geom_point(colour = "#FA7800") +
   geom_smooth(method = "lm", se = FALSE, colour = "#25CB10") +
   labs(title = "Error as a function of the spatial lag of price",
@@ -801,10 +823,10 @@ spatiallag2 <- ggplot(miami.baseline.test, aes(x=lagPriceError, y=SalePrice)) +
        y = "Sale Price") +
   plotTheme()
 
-grid.arrange(spatiallag1, spatiallag2, ncol=2)
+grid.arrange(spatial_lag1, spatial_lag2, ncol=2)
 ```
 
-We then analyzed whether and to what degree sale price errors cluster within Miami using Moran's I test, a statistic that identifies spacial clustering. The test and provided histogram confirmat that the model errors are spatially correlated, meaning that they do cluster. 
+We then analyzed whether and to what degree sale price errors cluster within Miami using Moran's I test, a statistic that identifies spacial clustering. The test and provided histogram confirm that the model errors are spatially correlated, meaning that they do cluster. 
  
 ```{r}
 moranTest <- moran.mc(miami.baseline.test$SalePrice.AbsError, 
@@ -828,7 +850,7 @@ ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
 We then looked at the mean average price error by neighborhood...
 ```{r}
 nhood_sum <- miami.baseline.test %>% 
-  group_by(LABEL) %>%
+  group_by(LABEL.y) %>%
   dplyr::summarize(meanPrice = mean(SalePrice, na.rm = T),
                    meanPrediction = mean(SalePrice.Predict, na.rm = T),
                    meanMAE = mean(SalePrice.AbsError, na.rm = T), 
@@ -842,14 +864,23 @@ nhood_sum %>%
 
 ```{r}
 st_drop_geometry(nhood_sum) %>%
-  group_by(LABEL) %>%
+  group_by(LABEL.y) %>%
   ungroup() %>%
   left_join(nhoods.sf) %>%
     st_sf() %>%
     ggplot() +
       geom_sf(aes(fill = meanMAPE)) +
+      geom_sf(data = miami.sf, size = 0.4) +
       scale_fill_gradient(low = palette5[1], high = palette5[5],
                         name = "MAPE") +
     labs(title = "Mean test set MAPE by neighborhood") +
     mapTheme()
+```
+
+```{r}
+secret_data <- filter(miami.sf, toPredict == 1) 
+secret_preds <- predict(reg1, newdata = secret_data)
+
+output_preds <- data.frame(prediction = secret_preds, Folio = secret_data$Folio, team_name = "Flymiamibro")
+write.csv(output_preds, "Flymiamibro.csv")
 ```
