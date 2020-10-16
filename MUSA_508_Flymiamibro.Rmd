@@ -506,7 +506,7 @@ VarSummary_spatial <- miami.sf %>%
   st_drop_geometry()
 
 stargazer(VarSummary_internal, VarSummary_amenity, VarSummary_census, VarSummary_spatial, 
-          type = "html", 
+          type = "text", 
           global.summary = TRUE, 
           title = c("Internal Characteristics", "Amenities & Services", "Census & Demographic", "Spatial"))
 
@@ -851,7 +851,7 @@ ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
   plotTheme()
 ```
 
-We then looked at the mean average price error by neighborhood...
+We then looked at the mean average sale price error by neighborhood, grouping our home sale prices into their respective neighborhoods. As indicated in the table, our percent error ranges significantly with certain neighborhoods below 10% average error and others above 100%. This confirms our previous analysis where we could see that we were better predicting higher priced homes than lower priced homes and our understanding of how home prices cluster across the city.
 ```{r}
 nhood_sum <- miami.baseline.test %>% 
   group_by(LABEL.y) %>%
@@ -866,6 +866,7 @@ nhood_sum %>%
   kable() %>% kable_styling()
 ```
 
+We then mapped these findings across the city where we can see that our best predictions are occuring in areas with higher home prices like Miami Beach and Southwest Coconut Grove. Contastingly, the northwest area of Miami, where home prices tend to be lower, has neighborhoods with the highest mean average percent error. The scatterplot confirms this in showing at as the mean price of home sales in a neighborhood decrease, the mean absolute error increases.
 ```{r}
 st_drop_geometry(nhood_sum) %>%
   group_by(LABEL.y) %>%
@@ -873,7 +874,7 @@ st_drop_geometry(nhood_sum) %>%
     st_sf() %>%
     ggplot() +
       geom_sf(aes(fill = meanMAPE)) +
-      geom_sf(data = miami.sf, size = 0.4) +
+      geom_sf(data = miami.sf, size = 0.2) +
       scale_fill_gradient(low = palette5[1], high = palette5[5],
                         name = "MAPE") +
     labs(title = "Mean test set MAPE by neighborhood") +
@@ -881,13 +882,25 @@ st_drop_geometry(nhood_sum) %>%
 ```
 
 ```{r}
+ggplot(nhood_sum, aes(x=meanMAPE, y=meanPrice)) +
+  geom_point(colour = "#FA7800") +
+  geom_smooth(method = "lm", se = FALSE, colour = "#25CB10") +
+  labs(title = "Mean asbolute percent error by neighborhood as a function of price",
+       caption = "",
+       x = "Mean absolute percent error",
+       y = "Mean price") +
+  plotTheme()
+```
+
+##Discussion
+While the model does a better job at predicting high priced homes than lower priced homes, 
+
+##Conclusion
+
+```{r}
 secret_data <- filter(miami.sf, toPredict == 1) 
 secret_preds <- predict(reg1, newdata = secret_data)
 
 output_preds <- data.frame(prediction = secret_preds, Folio = secret_data$Folio, team_name = "Flymiamibro")
 write.csv(output_preds, "Flymiamibro.csv")
-```
-
-```{r}
-
 ```
