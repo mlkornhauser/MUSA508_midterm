@@ -259,7 +259,7 @@ head(miami.sf) %>%
   st_drop_geometry()
 ```
 
-We then incorporated locational data about local Miami businesses and amenities that may impact a home's sale price. We pulled these data from open sources include the Miami-Dade data portal and OSM. We then calculated the average nearest neighbor distance to determine how close each home was to these amenities. 
+We then incorporated locational data about local Miami businesses and amenities that may impact a home's sale price. We pulled these data from open sources including the Miami-Dade data portal and OSM. We then calculated the average nearest neighbor distance to determine how close each home was to these amenities. 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 st_c <- st_coordinates
@@ -647,7 +647,7 @@ stargazer(
   dep.var.labels = "Model Features")
 ```
 
-We then looked calculated how well our model predicts on new data, our test set, which indicate a mean absolute error (MAE) of **$316,467**. This indicates that on average, we are either under or over predicting home sale prices by **$316,467**. The mean absolute percent error (MAPE), confirms this issue indicating that, on average, our model errs by 33%.
+We then calculated how well our model predicts on new data, our test set, which indicate a mean absolute error (MAE) of **$316,467**. This indicates that on average, we are either under or over predicting home sale prices by **$316,467**. The mean absolute percent error (MAPE), confirms this issue indicating that, on average, our model errs by 33%.
 ```{r}
 miami.test <-
   miami.test %>%
@@ -831,7 +831,6 @@ grid.arrange(spatial_lag1, spatial_lag2, ncol=2)
 ```
 
 We then analyzed whether and to what degree sale price errors cluster within Miami using Moran's I test, a statistic that identifies spacial clustering. The test and provided histogram confirm that the model errors are spatially correlated, meaning that they do cluster. 
- 
 ```{r}
 moranTest <- moran.mc(miami.baseline.test$SalePrice.AbsError, 
                       spatialWeights.test, nsim = 999)
@@ -893,7 +892,11 @@ ggplot(nhood_sum, aes(x=meanMAPE, y=meanPrice)) +
 ```
 
 ##Discussion
-While the model does a better job at predicting high priced homes than lower priced homes, 
+While we were able to continuously hone our model by including various home features, neighborhood amenities, and census information, the model remains imperfect in in terms of generalizability. This was seen in our earlier discussion around cross-validation and our model's ability to predict home sales on a new set of data. Lack of generalizability was again confirmed when mapping percent error across Miami and Miami Beach neighborhoods where we can see discrepencies in the model's ability to predict prices across different neighborhoods with different average home prices. 
+
+A few of the more interesting variables in our model include distance to barbershops and casinos, as well as certain home features like elevators and luxury pools. As discussed earlier, distance to barbershops have a positive correlation with sale price, meaning that as the distance to barbershops increases, the sale price of a home also increases. There is a clear concentration of barbershops in the western section of the City where home sale prices tend to be lower in comparison to the coastal area. Casinos have a similar relationship with sale price as the two casinos in Miami are located in areas with lower home price values. This also raises concerns over casino predatory practices on poorer people in Miami as there have been many studies on casinos' tactics to entice low-income gamblers and exploit more vulnerable populations. Possibly less surprising but two of the more interesting home characteristics in our model include elevators and luxury pools. The inclusion of these features in homes have strong relationships with home price as these are features predominantly found in luxury properties.
+
+Our model predicts for 91% of the variation in home price with our most significant variables being price per square foot, which we calculated for each home, and adjusted square feet of the home. Distance to the beach was also highly significant as homes closer to the beach have higher prices than those farther away. Based on the maps above and our previous discussion, its clear that our model needs to improve upon its ability to account for spatial variation in home prices. Considering that our model does a better job at predicting higher priced homes than lower priced homes, going forward we will look to consider characteristics that lower-priced homes may have that higher-priced homes do not have.
 
 ##Conclusion
 
