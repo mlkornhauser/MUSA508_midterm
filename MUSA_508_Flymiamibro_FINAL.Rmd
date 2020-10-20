@@ -1,0 +1,944 @@
+---
+title: "MUSA 508 Midterm: Miami Home Sales Prediction"
+author: "Flymiamibro:  Maddy Kornhauser & Adam Ghazzawi"
+date: "10/15/2020"
+output: 
+  html_document: 
+        code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(sf)
+library(spdep)
+library(caret)
+library(ckanr)
+library(FNN)
+library(grid)
+library(gridExtra)
+library(ggcorrplot)
+library(osmdata)
+library(Hmisc)
+library(tidycensus)
+library(kableExtra)
+library(stargazer)
+
+root.dir = "https://github.com/mlkornhauser/MUSA508_midterm.git"
+
+mapTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 14,colour = "black"),
+    plot.subtitle=element_text(face="italic"),
+    plot.caption=element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2)
+  )
+}
+
+plotTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 14,colour = "black"),
+    plot.subtitle = element_text(face="italic"),
+    plot.caption = element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),
+    panel.grid.major = element_line("grey80", size = 0.1),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2),
+    strip.background = element_rect(fill = "grey80", color = "white"),
+    strip.text = element_text(size=12),
+    axis.title = element_text(size=12),
+    axis.text = element_text(size=10),
+    plot.background = element_blank(),
+    legend.background = element_blank(),
+    legend.title = element_text(colour = "black", face = "italic"),
+    legend.text = element_text(colour = "black", face = "italic"),
+    strip.text.x = element_text(size = 14)
+  )
+}
+
+palette5 <- c('#f07167','#fed9b7','#fdfcdc','#00afb9', '#0081a7')
+
+qBr <- function(df, variable, rnd) {
+  if (missing(rnd)) {
+    as.character(quantile(round(df[[variable]],0),
+                          c(.01,.2,.4,.6,.8), na.rm=T))
+  } else if (rnd == FALSE | rnd == F) {
+    as.character(formatC(quantile(df[[variable]]), digits = 3),
+                 c(.01,.2,.4,.6,.8), na.rm=T)
+  }
+}
+
+q5 <- function(variable) {as.factor(ntile(variable, 5))}
+
+nn_function <- function(measureFrom,measureTo,k) {
+  measureFrom_Matrix <- as.matrix(measureFrom)
+  measureTo_Matrix <- as.matrix(measureTo)
+  nn <-   
+    get.knnx(measureTo, measureFrom, k)$nn.dist
+  output <-
+    as.data.frame(nn) %>%
+    rownames_to_column(var = "thisPoint") %>%
+    gather(points, point_distance, V1:ncol(.)) %>%
+    arrange(as.numeric(thisPoint)) %>%
+    group_by(thisPoint) %>%
+    dplyr::summarize(pointDistance = mean(point_distance)) %>%
+    arrange(as.numeric(thisPoint)) %>% 
+    dplyr::select(-thisPoint) %>%
+    pull()
+  
+  return(output)  
+}
+
+```
+
+## 1. Introduction
+
+Known for its beautiful beaches, vibrant culture, and lively nightlife, Miami and neighboring Miami Beach are major hubs for business and tourism. Located at the southeastern tip of Florida, the cities are a popular destination for domestic and international visitors and act as an economic powerhouse for the region. But how do these local amenities factor into home prices for residents? We developed a machine-learning model to predict home prices. Our model accounts for these  features that Miami residents value when buying a home. We strived to make the model both accurate and generalizable, so the model can predict on new data, such as houses that have not been up for sale in many years. The model's ability to generalize in new contexts means it is useful for a variety of needs, from market studies in the private, development world to property tax assessment in the public realm.
+
+Creating this model is a difficult task with unavoidable imperfections. Even within Miami and Miami Beach, the housing market is incredibly varied in terms of price, location, and nearby amenities. While it is impossible to account for all features that factor into a home's value, this model looks at four main and fairly comprehensive categories to predict home prices: the home's physical characteristics, nearby public services and amenities, demographic data, and the prices of nearby homes. To test the model's generalizability, we split our data into two groups of testing and training  data. We ran the model on the training data set and then on the testing data set to assess how well the model can be used to predict new data.
+
+On average, our model was successful in predicting high value properties located in Miami Beach and along the coast in Miami. The model was less successful in predicting home prices in the western, lower-income neighborhoods of the city.
+
+## 2. Data
+
+As noted in the introduction, we collected the following data types listed below.
+
+1. **Physical Home Characteristics**: These features were engineered from the initial data set that listed out home prices. The goal of these variables is to account for structural features that impact a home's value. Examples of these characteristics include the number of bedrooms, the square footage, or additional features that accompany the home, like the presence of a pool.
+
+2. **Public Services & Amenities**: These data were pulled from Miami's open data portal and OpenStreetMap (OSM) to account for surrounding businesses and services that may affect a home's price. Examples of this second type of characteristics induce the distance to the beach or nearby hotels.
+
+3. **Demographic & Census Data**: We incorporated demographic data that we thought provided important context for the home prices. We found that incorporating certain demographic variables from the census improved our model's predictive power. These variables included the share of the population identifying as Hispanic and population over the age of 40. 
+
+4. **Price Clustering**: We studied how prices clustered together at the neighborhood level and within a half-mile buffer of each home. We identified high and low value homes from the original data set and generated variables to explain how close those were to each other.
+
+### Data Setup
+
+Based on available open data, the following lines of code pull the municipal boundaries for Miami-Dade County and filter to only return polygons for Miami and Miami Beach. We created a bounding box that we used specifically to plot OSM data within city boundaries.   
+
+Figure 2.1 below shows each of the properties by sales price, removing all prices that have been zeroed out for prediction. 
+
+```{r Miami.base, message=FALSE, warning=FALSE, results=FALSE}
+miami.base <- 
+  st_read("https://opendata.arcgis.com/datasets/5ece0745e24b4617a49f2e098df8117f_0.geojson", quiet = TRUE) %>%
+  filter(NAME == "MIAMI BEACH" | NAME == "MIAMI") %>%
+  st_union() #Need to keep miami.base unprojected to pull and filter OSM data
+
+miami.base.sf <- miami.base %>%
+  st_as_sf(coords = "geometry", crs = 4326, agr = "constant") %>%
+  st_transform('ESRI:102658') 
+
+#Setting the bounding box
+xmin = st_bbox(miami.base)[[1]]
+ymin = st_bbox(miami.base)[[2]]
+xmax = st_bbox(miami.base)[[3]]  
+ymax = st_bbox(miami.base)[[4]]
+
+#Housing data
+miami <- st_read('data/studentsData.geojson')
+miami.sf  <- miami %>% 
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326, agr = "constant") %>%
+  st_transform(st_crs(miami.base.sf))
+
+sales <- subset(miami.sf, SalePrice > 0)
+ggplot() +
+  geom_sf(data = miami.base.sf, fill = "grey60") +
+  geom_sf(data = sales, aes(colour = q5(SalePrice)), 
+          show.legend = "point", size = .75) +
+  scale_colour_manual(values = palette5,
+                      labels = qBr(sales, "SalePrice"),
+                      name = "Home Sale Price\n(Quintile Breaks)") +
+  labs(title="Sales Price, Miami",
+       subtitle = "Figure 2.1") +
+  mapTheme()
+```
+
+Next, we manipulated the housing data to engineer physical home characteristics that we were interested incorporating into our model. Below is a snippet of the physical home variables we chose.
+
+```{r echo=FALSE}
+miami.sf <- miami.sf %>% 
+  mutate(Age = 2020 - YearBuilt,
+         PriceperSQFT = SalePrice / ActualSqFt) 
+miami.sf$Zip_short <- substr(miami.sf$Property.Zip, 1, 5)
+
+#Pool
+poollist <- list("Pool 6' res BETTER 3-8' dpth, tile 250-649 sf",
+                 "Pool 6' res AVG 3-8' dpth, plain feat 250-649 sf",
+                 "Pool 8' res BETTER 3-8' dpth, tile 650-1000 sf",
+                 "Pool COMM AVG 3-6' dpth, plain feat 15x30 av size",
+                 "Luxury Pool - Good.",
+                 "Luxury Pool - Better",
+                 "Luxury Pool - Better")
+miami.sf <- 
+  miami.sf %>%
+  mutate(Pool_1 = XF1 %in% poollist, 
+         Pool_2 = XF2 %in% poollist, 
+         Pool_3 = XF3 %in% poollist)
+miami.sf$Pool <- ifelse(miami.sf$Pool_1 == "TRUE" | 
+                          miami.sf$Pool_2 == "TRUE" | 
+                          miami.sf$Pool_3 == "TRUE", 1, 0)
+drop <- c("Pool_1","Pool_2","Pool_3")
+miami.sf <- miami.sf[,!(names(miami.sf) %in% drop)]
+
+#Luxury Pool
+luxpoollist <- list( "Luxury Pool - Good.",
+                     "Luxury Pool - Better",
+                     "Luxury Pool - Better")
+miami.sf <- miami.sf %>%
+  mutate(LuxPool_1 = XF1 %in% luxpoollist, LuxPool_2 = XF2 %in% luxpoollist, LuxPool_3 = XF3 %in% luxpoollist)
+miami.sf$LuxPool <- ifelse(miami.sf$LuxPool_1 == "TRUE" | 
+                          miami.sf$LuxPool_2 == "TRUE" | 
+                          miami.sf$LuxPool_3 == "TRUE", 1, 0)
+drop <- c("LuxPool_1","LuxPool_2","LuxPool_3")
+miami.sf <- miami.sf[,!(names(miami.sf) %in% drop)]
+
+#Dock
+docklist <- list("Dock - Wood on Light Posts",      
+                 "Dock - Wood Girders on Concrete Pilings",
+                 "Dock - Concrete Griders on Concrete Pilings")
+miami.sf <- miami.sf %>%
+  mutate(
+    Dock_1 = XF1 %in% docklist,
+    Dock_2 = XF2 %in% docklist, 
+    Dock_3 = XF3 %in% docklist)
+miami.sf$Dock <- ifelse(miami.sf$Dock_1 == "TRUE" | 
+                          miami.sf$Dock_2 == "TRUE" | 
+                          miami.sf$Dock_3 == "TRUE", 1, 0)
+drop <- c("Dock_1","Dock_2","Dock_3")
+miami.sf <- miami.sf[,!(names(miami.sf) %in% drop)]
+
+#Patio
+patiolist <- list("Patio - Screened over Concrete Slab",
+                  "Patio - Concrete Slab",
+                  "Patio - Terrazzo, Pebble",
+                  "Patio - Brick, Tile, Flagstone",
+                  "Patio - Wood Deck",
+                  "Patio - Concrete Slab w/Roof Aluminum or Fiber",
+                  "Patio - Concrete stamped or stained",
+                  "Patio - Marble")
+miami.sf <- miami.sf %>%
+  mutate(
+    Patio_1 = XF1 %in% patiolist,
+    Patio_2 = XF2 %in% patiolist, 
+    Patio_3 = XF3 %in% patiolist)
+miami.sf$Patio <- ifelse(miami.sf$Patio_1 == "TRUE" | 
+                          miami.sf$Patio_2 == "TRUE" | 
+                          miami.sf$Patio_3 == "TRUE", 1, 0)
+drop <- c("Patio_1","Patio_2","Patio_3")
+miami.sf <- miami.sf[,!(names(miami.sf) %in% drop)]
+
+#Elevator
+elevlist <- list("Elevator - Passenger")
+miami.sf <- miami.sf %>%
+  mutate(
+    elev_1 = XF1 %in% elevlist,
+    elev_2 = XF2 %in% elevlist, 
+    elev_3 = XF3 %in% elevlist)
+miami.sf$Elevator <- ifelse(miami.sf$elev_1 == "TRUE" | 
+                             miami.sf$elev_2 == "TRUE" | 
+                             miami.sf$elev_3 == "TRUE", 1, 0)
+drop <- c("elev_1","elev_2","elev_3")
+miami.sf <- miami.sf[,!(names(miami.sf) %in% drop)]
+
+head(miami.sf) %>%
+  dplyr::select(PriceperSQFT, AdjustedSqFt, Bed, Pool, 
+                LuxPool, Dock, Patio, Elevator) %>%
+  st_drop_geometry()
+```
+
+We then incorporated locational data about local Miami businesses and amenities that may impact a home's sale price. We pulled these data from open sources include the Miami-Dade data portal and OSM. We then calculated the average nearest neighbor distance to determine how close each home was to these amenities. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+st_c <- st_coordinates
+
+#----Assisted Living (GEOJSON)
+assisted_living <- st_read('https://opendata.arcgis.com/datasets/9bb1ec069f134635b6fcb0173408a23d_0.geojson', quiet = TRUE)
+assisted.sf <- assisted_living%>%
+  st_transform(st_crs(miami.base.sf)) %>%
+  st_as_sf()
+assisted.sf <- st_join(assisted.sf, miami.base.sf, join = st_intersects, left = FALSE)
+
+miami.sf <-
+  miami.sf %>%
+  mutate(
+    assisted_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(assisted.sf)), 4))
+
+#----Barber (GEOJSON)
+commercial <- st_read("https://opendata.arcgis.com/datasets/fb8303c577c24ea386a91be7329842be_0.geojson", quiet = TRUE)
+commercial.sf <- 
+  commercial %>%
+  st_transform(st_crs(miami.base.sf)) %>%
+  st_as_sf() 
+commercial.sf <- st_join(commercial.sf, miami.base.sf, join = st_intersects, left = FALSE)
+
+Barber <- commercial.sf %>% subset(BUSDESC == "BARBER SHOPS\n")
+miami.sf <- miami.sf %>%
+  mutate(barber_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(Barber)), 4))
+
+#----Beaches (GEOJSON)
+beaches <- st_read('https://opendata.arcgis.com/datasets/d0d6e6c9d47145a0b05d6621ef29d731_0.geojson', quiet = TRUE) 
+beaches.sf <- beaches %>% #project and convert to sf object
+  st_transform(st_crs(miami.base.sf)) %>%
+  st_as_sf() %>%
+  st_union()
+
+BeachDistance <- st_distance(miami.sf, beaches.sf, by_element = TRUE)
+BeachDistance <- as.vector(BeachDistance)
+miami.sf$BeachDist <- BeachDistance
+
+#----Casino (OSM)
+casino <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>%
+  add_osm_feature(key = 'amenity', value = c("casino")) %>%
+  osmdata_sf()
+casino <-
+  casino$osm_polygons %>%
+  .[miami.base,]
+
+casino.sf <- casino %>%
+  dplyr::select(geometry) %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.base.sf)) %>%
+  distinct() %>%
+  st_centroid
+
+miami.sf <- miami.sf %>%
+  mutate(casino_nn1 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(casino.sf)), 1))
+
+#----Convenience Store (OSM)
+convenience <- opq(bbox = c(xmin, ymin, xmax, ymax)) %>% 
+  add_osm_feature(key = 'shop', value = c("convenience")) %>%
+  osmdata_sf()
+
+convenience <- 
+  convenience$osm_points %>%
+  .[miami.base,]
+
+convenience.sf <- convenience %>%
+  dplyr::select(geometry) %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.sf)) %>%
+  distinct()
+
+miami.sf <- miami.sf %>%
+  mutate(convenience_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(convenience.sf)), 4))
+
+#----Hotel (GEOJSON)
+hotel <- st_read('https://opendata.arcgis.com/datasets/d37bbc15e7304b4ca4607783283147b7_0.geojson', quiet = TRUE) 
+hotel.sf <- hotel %>%
+  st_transform(st_crs(miami.base.sf)) %>%
+  st_as_sf() 
+hotel.sf <- st_join(hotel.sf, miami.base.sf, join = st_intersects, left = FALSE)
+
+hotel.sf <- 
+  hotel %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.sf)) %>%
+  distinct()
+
+miami.sf <- miami.sf %>%
+  mutate(hotel_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(hotel.sf)), 4))
+
+#----Malls (GEOJSON)
+malls <- st_read('https://opendata.arcgis.com/datasets/cb24d578246647a9a4c57bbd80c1caa8_0.geojson', quiet = TRUE) 
+malls.sf <- malls %>%
+  st_transform(st_crs(miami.base.sf)) %>%
+  st_as_sf() 
+malls.sf <- st_join(malls.sf, miami.base.sf, join = st_intersects, left = FALSE)
+
+miami.sf <-
+  miami.sf %>%
+  mutate(malls_nn4 = nn_function(st_c(st_centroid(miami.sf)), st_c(st_centroid(malls.sf)), 4))
+
+head(miami.sf) %>%
+  dplyr::select(assisted_nn4, BeachDist, barber_nn4, casino_nn1, convenience_nn4, hotel_nn4, malls_nn4) %>%
+  st_drop_geometry()
+```
+
+We then pulled the following selection of census variables. Some census variables returned NA values for specific census tracts. In these instances we converted the NA values to 0's so that we could incorporate the numeric values into our analysis. We acknowledge this could lead to some distortion of the data, but considering that it was a relatively small sample, we decided to move forward with this approach.
+```{r message=FALSE, warning=FALSE, results=FALSE}
+#tidycensus pull
+tracts18 <-
+  get_acs(geography = "tract", variables = c("B01003_001E", "B02001_002E", "B01002_001E",
+                                             "B19013_001E", "B17020_002E", "B03001_003E"),
+          year=2018, state="Florida", county="Miami-Dade", geometry=T, output = "wide") %>%
+  st_transform(st_crs(miami.sf)) %>%
+  rename(TotalPop = B01003_001E,
+         Whites = B02001_002E,
+         MedAge = B01002_001E,
+         MedHHInc = B19013_001E,
+         Poverty = B17020_002E,
+         Hisp = 	B03001_003E) %>%
+  dplyr::select(-NAME, -starts_with("B")) %>%
+  mutate(pctHisp = ifelse(TotalPop >0, Hisp / TotalPop,0),
+         MedAge40up = ifelse(MedAge > 40,1,0),
+         year = "2018") %>%
+  dplyr::select(-Whites, -Poverty, -Hisp) 
+
+#joining tract data to Miami housing data
+miami.sf <- st_join(st_centroid(miami.sf), tracts18, join = st_intersects, left = TRUE, largest = TRUE)
+
+#Converting NA values to 0
+miami.sf$TotalPop[is.na(miami.sf$TotalPop)] <- 0
+miami.sf$MedAge[is.na(miami.sf$MedAge)] <- 0
+miami.sf$MedHHInc[is.na(miami.sf$MedHHInc)] <- 0
+miami.sf$pctHisp[is.na(miami.sf$pctHisp)] <- 0
+miami.sf$MedAge40up[is.na(miami.sf$MedAge40up)] <- 0
+```
+```{r}
+head(miami.sf) %>%
+  dplyr::select(MedAge40up, MedHHInc, pctHisp) %>%
+  st_drop_geometry()
+```
+
+Finally, we accounted for the spatial process of home prices and engineered variables to capture price clustering. We incorporated a shapefile with Miami neighborhood boundaries. We could not find a shapefile with Miami Beach neighborhoods, so we appended the entire Miami Beach municipality to our neighborhood data.  Therefore, we are not fully capturing the neighborhoods within Miami Beach. Figure 2.2 shows the boundaries we used for this part of the analysis.
+```{r message=FALSE, warning=FALSE, results=FALSE}
+nhoods <- st_read('https://opendata.arcgis.com/datasets/2f54a0cbd67046f2bd100fb735176e6c_0.geojson', quiet = TRUE)
+
+miamibeach  <-
+  st_read("https://opendata.arcgis.com/datasets/5ece0745e24b4617a49f2e098df8117f_0.geojson", quiet = TRUE) %>%
+  filter(NAME == "MIAMI BEACH")
+miamibeach.sf <- 
+  miamibeach %>%
+  dplyr::select(geometry) %>%
+  st_transform(st_crs(miami.base.sf)) %>%
+  st_as_sf()
+
+nhoods <- st_union(nhoods, miamibeach) %>% ungroup() 
+nhoods$LABEL[nhoods$FID==107] <- "Miami Beach"
+
+nhoods.sf <-
+  nhoods %>%
+  dplyr::select(LABEL, geometry) %>%
+  st_transform(st_crs(miami.base.sf)) %>%
+  st_as_sf() 
+nhoods.sf <- st_cast(nhoods.sf, "POLYGON")
+
+miami.sf <- st_join(miami.sf, nhoods.sf, join = st_within, left = TRUE)
+
+#Plotting neighborhood boundaries
+ggplot() +
+  geom_sf(data = nhoods.sf, fill = "grey60") +
+  labs(title="Miami Neighborhood Boundaries",
+       subtitle = "Figure 2.2") +
+  mapTheme()
+```
+
+We then calculated a variable to indicate if a property was located in one of the top 5 most expensive neighborhoods. We engineered additional variables to count the number of homes sold for over $10 million and the number of homes below the median sale price within a half-mile buffer of each property.
+```{r}
+#Property in neighborhood with top average sales price
+topavgnhoodlist <- list("San Marco Island",
+                        "Biscayne Island",
+                        "South Grove Bayside",
+                        "Baypoint",
+                        "Belle Island")
+miami.sf <- miami.sf %>%
+  mutate(TopAvgNhood = LABEL %in% topavgnhoodlist)
+miami.sf$TopAvgNhood <- ifelse(miami.sf$TopAvgNhood == "TRUE", 1, 0)
+
+#Number of sale prices over $10m within half-mile buffer
+neighbor.10M <- miami.sf %>% subset(SalePrice > 10000000)
+neighbor.10M.sf <-neighbor.10M %>%
+  dplyr::select(geometry) %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.base.sf))%>%
+  distinct()
+miami.sf$neighbor.10M_1320 =
+  st_buffer(miami.sf, 1320) %>%
+  aggregate(mutate(neighbor.10M.sf, counter = 1),., sum) %>%
+  pull(counter)
+miami.sf$neighbor.10M_1320[is.na(miami.sf$neighbor.10M_1320)] <- 0
+
+#Number of sale prices below median sales prices within half-mile buffer
+BelowMedPrice <- miami.sf %>% subset(SalePrice < median(miami.sf$SalePrice))
+BelowMedPrice.sf <-
+  BelowMedPrice %>%
+  dplyr::select(geometry) %>%
+  na.omit() %>%
+  st_transform(st_crs(miami.base.sf))%>%
+  distinct()
+miami.sf$BelowMedPrice_1320 =
+  st_buffer(miami.sf, 1320) %>%
+  aggregate(mutate(BelowMedPrice.sf, counter = 1),., sum) %>%
+  pull(counter)
+miami.sf$BelowMedPrice_1320[is.na(miami.sf$BelowMedPrice_1320)] <- 0
+
+head(miami.sf) %>%
+  dplyr::select(TopAvgNhood, neighbor.10M_1320, BelowMedPrice_1320) %>%
+  st_drop_geometry()
+```
+
+We compiled our final list of variables into the below summary table. 
+```{r}
+VarSummary_internal <- miami.sf %>%
+  dplyr::select(PriceperSQFT, AdjustedSqFt, Bed, Pool, LuxPool, Dock, Patio, Elevator) %>%
+  st_drop_geometry() 
+VarSummary_amenity <- miami.sf %>%
+  dplyr::select(assisted_nn4, BeachDist, barber_nn4, casino_nn1, convenience_nn4, hotel_nn4, malls_nn4) %>%
+  st_drop_geometry() 
+VarSummary_census <- miami.sf %>%
+  dplyr::select(MedAge40up, MedHHInc, pctHisp) %>%
+  st_drop_geometry() 
+VarSummary_spatial <- miami.sf %>%
+  dplyr::select(TopAvgNhood, neighbor.10M_1320, BelowMedPrice_1320) %>%
+  st_drop_geometry()
+
+stargazer(VarSummary_internal, VarSummary_amenity, VarSummary_census, VarSummary_spatial, 
+          type = "text", 
+          global.summary = TRUE, 
+          title = c("Internal Characteristics", "Amenities & Services", "Census & Demographic", "Spatial"))
+
+```
+
+### 3. Exploratory Analysis
+
+After loading and wrangling the variables, we needed to understand their relationships to each other. Figure 3.1 below shows a correlation matrix that uses color to indicate a positive or negative relationship between each of the variables. The blue squares indicate that there is a strong positive correlation and the dark pink indicates a strong negative correlation. The less saturated, the weaker the relationship between the variables. 
+
+The bottom row, which shows the independent variables' relationship to the sale price, is of particular interest. As this is is ultimately the value that we want to predict, this graphic is helpful in understanding how the sale price relates to the chosen independent variables that will be in our model. In general, we see that the home characteristics have a positive relationship with the sale price while other categories, such as distance to certain amenities, have negative relationships.
+```{r echo=FALSE, fig.height=7, fig.width=7, message=FALSE, warning=FALSE}
+numericVars <- 
+  select_if(st_drop_geometry(miami.sf), is.numeric) %>%
+  dplyr::select(SalePrice,
+                PriceperSQFT, AdjustedSqFt, Bed, Pool, LuxPool, Dock, Patio, Elevator,
+                assisted_nn4, BeachDist, barber_nn4, casino_nn1, convenience_nn4, hotel_nn4, malls_nn4,
+                MedAge40up, MedHHInc, pctHisp, TopAvgNhood, neighbor.10M_1320, BelowMedPrice_1320) %>%
+  na.omit()
+
+ggcorrplot(
+  round(cor(numericVars), 1), 
+  p.mat = cor_pmat(numericVars),
+  colors = c("#f765b8", "white", "#27fdf5"),
+  type="lower",
+  insig = "blank") +  
+  labs(title = "Correlation across numeric variables",
+       subtitle = "Figure 3.1") 
+```
+
+We also looked at correlation through a series of scatter plots comparing sale price to the individual variables. A selection of four variables are shown below.
+
+1. **Barbershops, Average Nearest 4 Neighbors**: The scatterplot indicates that being farther away from barbershops has a positive relationship with a home's sale price. While a barbershop may be considered an essential business, this might indicate a sociology-economic or cultural divide in the city. A barbershop may also be more common in non-white neighborhoods, which correlates negatively with home prices.
+
+2. **Casinos, Average Nearest 2 Neighbors**: The scatterplot indicates that being farther away from barbershops has a positive relationship with a home's sale price. There are only two casinos within Miami city limits, but they are concentrated in the western part of the city near the airport. 
+
+3. **Malls, Average Nearest 4 Neighbors**: The scatterplot indicates a negative relationship with distance from malls, suggesting that malls in Miami are more high-end establishments.
+
+4. **Count of Expensive Homes within a 1/2 Mile Buffer**: The scatterplot indicates a very strong positive relationship between the number of homes over $10 million within a 1/2 mile buffer of each property and sales price. This means that the more expensive your neighbor's home is, the more expensive your home is as well.
+
+```{r fig.height=6, fig.width=12, message=FALSE, warning=FALSE}
+st_drop_geometry(miami.sf) %>% 
+  dplyr::select(SalePrice, 
+                casino_nn1, 
+                barber_nn4, 
+                malls_nn4, 
+                neighbor.10M_1320) %>% 
+  gather(Variable, Value, -SalePrice) %>% #convert to long format
+  ggplot(aes(Value, SalePrice)) + #plot
+  geom_point(size = .5) + geom_smooth(method = "lm", se=F, colour = "#FA7800") +
+  facet_wrap(~Variable, ncol = 4, scales = "free") +
+  labs(title = "Price as a function of continuous variables",
+       subtitle = "Figure 3.2") +
+  plotTheme()
+```
+
+
+Finally, we looked at a series of maps to observe the spatial distribution of variables. 
+
+1. **Properties with Pools**: Unsurprisingly, most properties with pools appear to be in more expensive neighborhoods that are closer to the coast. 
+```{r}
+ggplot() +
+  geom_sf(data = miami.base.sf, fill = "grey40") +
+  geom_sf(data = miami.sf, aes(colour = as.character(Pool)), size = .75) +
+  scale_colour_manual(values = c("#f765b8", "#27fdf5"),
+                      labels = c("No", "Yes"),
+                      name = "Home with Pools") +
+  labs(title="Properties with Pools, Miami",
+       subtitle = "Figure 3.3") + 
+  mapTheme()
+```
+
+2. **Distance to Barber**: The properties in western Miami are generally much closer to barbers than the properties along the coast in Miami. As mentioned above, there appears to be a socio-economic and ethnic trend underlying the placement of barbershops in Miami.
+```{r}
+ggplot() +
+  geom_sf(data = miami.base.sf, fill = "grey40") +
+  geom_sf(data = miami.sf, aes(colour = q5(barber_nn4)), size = .75) +
+  scale_colour_manual(values = palette5,
+                      labels = qBr(miami.sf, "barber_nn4"),
+                      name = "Avg Distance to 4 NN (ft)\n(Quintile Breaks)") +
+  labs(title="Nearest Barber, Miami",
+       subtitle = "Figure 3.4") + 
+  mapTheme()
+```
+
+3. **Distance to Assisted Living Facility**: This variable has a slightly different spatial pattern than the other variables with assisted living facilities being located close to both high and low-value properties. There also appear to be no assisted living facilities in Miami Beach.
+```{r}
+ggplot() +
+  geom_sf(data = miami.base.sf, fill = "grey40") +
+  geom_sf(data = miami.sf, aes(colour = q5(assisted_nn4)), size = .75) +
+  scale_colour_manual(values = palette5,
+                      labels = qBr(miami.sf, "assisted_nn4"),
+                      name = "Avg Distance to 4 NN (ft)\n(Quintile Breaks)") +
+  labs(title="Nearest Casino, Miami",
+       subtitle = "Figure 3.5") + 
+  mapTheme()
+```
+
+### 4. Methods
+
+Once we imported our data and conducted the exploratory analysis, we set up the workflow for our predictive model. To ensure that our model was generalizable to new contexts, we split our data into two subsets: a testing group and a training group. This would allow us to first train the model on the training data and then apply the model to the testing data, allowing us to observe how well the model can predict prices in a new data set. As shown below, we compared the predicted value and the actual value to determine the model's success. We also mapped our error terms to observe any systematic, spatial deficiencies in the model. 
+
+### 5. Results
+
+Once we loaded, analyzed, and engineered our data variables for our model, we tested the model both for accuracy and generalizability to ensure that we can apply our model to other data sets. We divided our housing sales data and features into separate training and test sets. We used the training set to test the generalizability of the model by accurately predicting home sale prices on a different set of data.
+
+The summary output of the model provides both the significance values for each of the utilized variables to test sales as well as statistics that inform how accurate the model is in predicting home prices. The p-value, provided for each variable, indicates the confidence level that the variable is a good predictor of home price. All of the utilized variables in the model are highly significant and our R^2 value of 0.91 indicates that our features account for 91% of variation in home price.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#Subset miami dataframe into all homes with listed sale prices
+sales <- subset(miami.sf, SalePrice > 0)
+
+#Setting up test and training datasets
+inTrain <- createDataPartition( 
+  y = paste(sales$LABEL, sales$Bed), 
+  p = .60, list = FALSE)
+
+miami.training <- sales[inTrain,] 
+miami.test <- sales[-inTrain,]  
+
+#Multivariate regression
+reg1 <- lm(SalePrice ~ ., data = st_drop_geometry(miami.training) %>% 
+             dplyr::select(SalePrice, PriceperSQFT, AdjustedSqFt, Bed, malls_nn4,
+                           hotel_nn4, BeachDist, Pool, LuxPool, Dock, Patio, Elevator,
+                           TopAvgNhood, neighbor.10M_1320,
+                           MedAge40up, MedHHInc, pctHisp, BelowMedPrice_1320, convenience_nn4, 
+                           barber_nn4, assisted_nn4, casino_nn1))
+
+stargazer(
+  reg1,
+  type = "text",
+  title = "Linear Model Summary Table",
+  dep.var.caption = " ",
+  dep.var.labels = "Model Features")
+```
+
+As shown in the table below, we calculated how well our model predicts on the testing set, which indicates a mean absolute error (MAE) of **$316,467**. This indicates that on average, we are either under or over predicting home sale prices by **$316,467**. The mean absolute percent error (MAPE), confirms this issue indicating that, on average, our model errs by 33%.
+```{r}
+miami.test <-
+  miami.test %>%
+  mutate(Regression = "Baseline Regression",
+         SalePrice.Predict = predict(reg1, miami.test),
+         SalePrice.Error = SalePrice.Predict - SalePrice,
+         SalePrice.AbsError = abs(SalePrice.Predict - SalePrice),
+         SalePrice.APE = (abs(SalePrice.Predict - SalePrice)) / SalePrice.Predict)
+
+ErrorTable <- 
+  miami.test %>% 
+  dplyr::summarize(Regression = "Baseline Regression",
+                   MAE = mean(SalePrice.AbsError, na.rm = T), 
+                   MAPE = mean(SalePrice.AbsError, na.rm = T) / mean(SalePrice, na.rm = T)) 
+
+ErrorTable %>% 
+  st_drop_geometry %>%
+  group_by(Regression) %>%
+  arrange(desc(MAE)) %>% 
+  kable(caption = "MAE and MAPE for Test Set Data") %>% kable_styling()
+```
+
+### Cross-validation
+The plots below indicate how well our model is predicting home prices in both our training and test set data. The orange line indicates a perfect fit, meaning that our predicted home sale values match those of the actual values. As seen in the bottom right scatterplot, we are almost perfectly predicting home sale prices in accordance with their actual values in our training data. In our testing data, our model slightly over-predicts home prices, but fits fairly close to the line.
+
+```{r message=FALSE, warning=FALSE}
+reg1_predict <- predict(reg1, newdata = miami.test)
+
+rmse.train <- caret::MAE(predict(reg1), miami.training$SalePrice)
+rmse.test <- caret::MAE(reg1_predict, miami.test$SalePrice)
+
+preds.train <- data.frame(pred   = predict(reg1),
+                          actual = miami.training$SalePrice,
+                          source = "training data")
+preds.test  <- data.frame(pred   = reg1_predict,
+                          actual = miami.test$SalePrice,
+                          source = "testing data")
+
+preds <- rbind(preds.train, preds.test)
+
+ggplot(preds, aes(x = pred, y = actual, color = source)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "green") +
+  geom_abline(color = "orange") +
+  coord_equal() +
+  theme_bw() +
+  facet_wrap(~source, ncol = 2) +
+  labs(title = "Comparing predictions to actual values",
+       x = "Predicted Value",
+       y = "Actual Value",
+       subtitle = "Figure 5.1") +
+  theme(
+    legend.position = "none"
+  )
+```
+
+### Generalizability
+We then looked to test the generalizability of our model using a cross-validation test. In this analysis, we split our data into 100 groups - one group acts as the test set with the remaining 99 groups acting as the training set. This process is repeated for each individual group, resulting in 100 "scores" telling us how well our model predicted for each sample of new data. 
+
+Our average MAE of **$329,389.5** is similar to the MAE of our initial test, but our standard deviation of **$67,279.99** suggests there's significant variation across our 100 groups. The histogram in Figure 5.2 below confirms the variation showing a wide distribution of errors. This indicates that our model requires continued refinement in order for it to be generalizable to new housing sale price data.
+```{r message=FALSE, warning=FALSE}
+fitControl <- trainControl(method = "cv", 
+                           number = 100,
+                           savePredictions = TRUE)
+
+set.seed(717)
+reg1.cv <- 
+  train(SalePrice ~ ., data = st_drop_geometry(sales) %>% 
+          dplyr::select(SalePrice, PriceperSQFT, AdjustedSqFt, Bed, malls_nn4,
+                        hotel_nn4, BeachDist, Pool, LuxPool, Dock, Patio, Elevator,
+                        TopAvgNhood, neighbor.10M_1320,
+                        MedAge40up, MedHHInc, pctHisp, BelowMedPrice_1320, convenience_nn4, 
+                        barber_nn4, assisted_nn4, casino_nn1), 
+        method = "lm", 
+        trControl = fitControl, 
+        na.action = na.pass)
+
+reg1.cv 
+
+#Standard Deviation and Histogram of MAE
+reg1.cv.resample <- reg1.cv$resample
+
+sd(reg1.cv.resample$MAE)
+
+ggplot(reg1.cv.resample, aes(x=MAE)) + geom_histogram(color = "grey40", fill = "#27fdf5", bins = 50) + 
+  labs(title="Histogram of Mean Average Error Across 100 Folds",
+       subtitle = "Figure 5.2") +
+  plotTheme()
+```
+
+The two maps below identify our sale price errors across Miami. The left map identifies the errors in absolute terms, or dollar value, and the left map identifies errors as a percent of home sale price. The maps indicate that while the greatest variation in absolute terms occurs in areas with the highest home sale prices (i.e. Miami Beach and Southwest Coconut Grove), the largest percent errors occur in neighborhoods to the northwest and west of downtown. This indicates that we have a higher percent error on lower priced properties.
+```{r fig.height=5, fig.width=10}
+cv_preds <- reg1.cv$pred
+
+map_preds <- sales %>% 
+  rowid_to_column(var = "rowIndex") %>% 
+  left_join(cv_preds, by = "rowIndex") %>% 
+  mutate(SalePrice.AbsError = abs(pred - SalePrice),
+         PercentError = (SalePrice.AbsError / SalePrice)*100) 
+
+ErrorPlot1 <- ggplot() +
+  geom_sf(data = miami.base.sf, fill = "grey40") +
+  geom_sf(data = map_preds, aes(colour = q5(SalePrice.AbsError)),
+          show.legend = "point", size = .75) +
+  scale_colour_manual(values = palette5,
+                      labels=qBr(map_preds,"SalePrice.AbsError"),
+                      name="Quintile\nBreaks") +
+  labs(title="Absolute sale price errors \non the OOF set",
+       subtitle = "OOF = 'Out Of Fold'",
+       caption = "Figure 5.3") +
+  mapTheme()
+
+ErrorPlot2 <- ggplot() +
+  geom_sf(data = miami.base.sf, fill = "grey40") +
+  geom_sf(data = map_preds, aes(colour = q5(PercentError)),
+          show.legend = "point", size = .75) +
+  scale_colour_manual(values = palette5,
+                      labels=qBr(map_preds, "PercentError"),
+                      name="Quintile\nBreaks") +
+  labs(title="Absolute sale price errors \non the OOF set",
+       subtitle = "OOF = 'Out Of Fold'",
+       caption = "Figure 5.4") +
+  mapTheme()
+
+grid.arrange(ErrorPlot1, ErrorPlot2, ncol=2)
+```
+
+We then tested for evidence of clustering of home prices in Miami, or the degree to which home sale prices are similar to those around them. For each property, we took the average home sale price of its five closest neighbors in the data set. We then plotted the function, which shows a statistically significant positive relationship between a home's sale price and the mean sale price of its five closest neighbors. This means that as the sale price of a home increases so do the prices of surrounding properties.
+
+We also plotted the model's errors in predicting home prices, which similarly show a statistically significant, positive relationship with sale price. 
+```{r message=FALSE, warning=FALSE}
+miami.baseline.test <-
+  miami.test %>%
+  mutate(Regression = "Baseline Regression",
+         SalePrice.Predict = predict(reg1, miami.test),
+         SalePrice.Error = SalePrice.Predict - SalePrice,
+         SalePrice.AbsError = abs(SalePrice.Predict - SalePrice),
+         SalePrice.APE = (abs(SalePrice.Predict - SalePrice)) / SalePrice.Predict)
+
+k_nearest_neighbors = 5
+
+coords <- miami.sf %>%
+  dplyr::select(geometry) %>%
+  st_centroid() %>%
+  st_coordinates()
+
+neighborList <- knn2nb(knearneigh(coords, k_nearest_neighbors))
+spatialWeights <- nb2listw(neighborList, style="W")
+miami.sf$lagPrice <- lag.listw(spatialWeights, miami.sf$SalePrice)
+
+#errors
+coords.test <-  miami.baseline.test %>%
+  dplyr::select(geometry) %>%
+  st_centroid() %>%
+  st_coordinates()
+neighborList.test <- knn2nb(knearneigh(coords.test, k_nearest_neighbors))
+spatialWeights.test <- nb2listw(neighborList.test, style="W")
+miami.baseline.test$lagPriceError <- lag.listw(spatialWeights.test, miami.test$SalePrice.AbsError)
+
+spatial_lag1 <- ggplot(miami.sf, aes(x=lagPrice, y=SalePrice)) +
+  geom_point(colour = "#FA7800") +
+  geom_smooth(method = "lm", se = FALSE, colour = "#25CB10") +
+  labs(title = "Price as a function of \nthe spatial lag of price",
+       caption = "Figure 5.5",
+       x = "Spatial lag of price \n(Mean price of 5 nearest neighbors)",
+       y = "Sale Price") +
+  plotTheme()
+
+spatial_lag2 <- ggplot(miami.baseline.test, aes(x=lagPriceError, y=SalePrice)) +
+  geom_point(colour = "#FA7800") +
+  geom_smooth(method = "lm", se = FALSE, colour = "#25CB10") +
+  labs(title = "Error as a function of \nthe spatial lag of price",
+       caption = "Figure 5.6",
+       x = "Spatial lag of errors \n(Mean error of 5 nearest neighbors)",
+       y = "Sale Price") +
+  plotTheme()
+
+grid.arrange(spatial_lag1, spatial_lag2, ncol=2)
+```
+
+We then analyzed whether and to what degree sale price errors cluster within Miami using Moran's I test, a statistic that identifies spacial clustering. A Moran's I value closer to 0 indicates randomness in the errors. While the Moran's I value is closer to 0 than 1, there is evidence that the model errors are spatially correlated, meaning they do cluster.
+```{r}
+moranTest <- moran.mc(miami.baseline.test$SalePrice.AbsError, 
+                      spatialWeights.test, nsim = 999)
+moranTest
+```
+
+```{r}
+ggplot(as.data.frame(moranTest$res[c(1:999)]), aes(moranTest$res[c(1:999)])) +
+  geom_histogram(binwidth = 0.01) +
+  geom_vline(aes(xintercept = moranTest$statistic), colour = "#FA7800",size=1) +
+  scale_x_continuous(limits = c(-1, 1)) +
+  labs(title="Observed and permuted Moran's I",
+       subtitle= "Observed Moran's I in orange",
+       x="Moran's I",
+       y="Count",
+       caption="Figure 5.7") +
+  plotTheme()
+```
+
+We then looked at the mean average sale price error by neighborhood, grouping our home sale prices into their respective neighborhoods. As indicated in the table, our percent error ranges significantly with certain neighborhoods below 10% average error and others above 100%. This confirms our previous analysis where we could see that we were better predicting higher priced homes than lower priced homes and our understanding of how home prices cluster across the city.
+<<<<<<< Updated upstream
+```{r}
+=======
+```{r message=FALSE, warning=FALSE}
+>>>>>>> Stashed changes
+nhood_sum <- miami.baseline.test %>% 
+  group_by(LABEL) %>%
+  dplyr::summarize(meanPrice = mean(SalePrice, na.rm = T),
+                   meanPrediction = mean(SalePrice.Predict, na.rm = T),
+                   meanMAE = mean(SalePrice.AbsError, na.rm = T), 
+                   meanMAPE = mean(SalePrice.AbsError, na.rm = T) / mean(SalePrice, na.rm = T)) 
+
+nhood_sum %>% 
+  st_drop_geometry %>%
+  arrange(desc(meanMAE)) %>% 
+  kable() %>% kable_styling()
+```
+
+<<<<<<< Updated upstream
+We then mapped these findings across the city where we can see that our best predictions are occuring in areas with higher home prices like Miami Beach and Southwest Coconut Grove. Contastingly, the northwest area of Miami, where home prices tend to be lower, has neighborhoods with the highest mean average percent error. The scatterplot confirms this in showing at as the mean price of home sales in a neighborhood decrease, the mean absolute error increases.
+```{r}
+=======
+As shown in Figure X.X, we then mapped these findings across the city where we can see that our best predictions are occurring in areas with higher home prices like Miami Beach and Southwest Coconut Grove. In contrast, the northwest area of Miami, where home prices tend to be lower, has neighborhoods with the highest mean average percent error. The scatterplot confirms this in showing that as the mean price of home sales in a neighborhood decrease, the mean absolute error increases.
+```{r message=FALSE, warning=FALSE}
+>>>>>>> Stashed changes
+st_drop_geometry(nhood_sum) %>%
+  group_by(LABEL) %>%
+  left_join(nhoods.sf) %>%
+    st_sf() %>%
+    ggplot() + 
+      geom_sf(data = nhoods.sf, fill = "grey40") +
+      geom_sf(aes(fill = meanMAPE)) +
+      geom_sf(data = miami.sf, size = 0.2) +
+      scale_fill_gradient(low = palette5[1], high = palette5[5],
+                        name = "MAPE") +
+    labs(title = "Mean test set MAPE by neighborhood",
+         subtitle = "Figure 5.8") +
+    mapTheme()
+```
+
+<<<<<<< Updated upstream
+```{r}
+ggplot(nhood_sum, aes(x=meanMAPE, y=meanPrice)) +
+  geom_point(colour = "#FA7800") +
+  geom_smooth(method = "lm", se = FALSE, colour = "#25CB10") +
+  labs(title = "Mean asbolute percent error by neighborhood as a function of price",
+       caption = "",
+=======
+```{r message=FALSE, warning=FALSE}
+ggplot(nhood_sum, aes(x=meanMAPE, y=meanPrice)) +
+  geom_point(colour = "#FA7800") +
+  geom_smooth(method = "lm", se = FALSE, colour = "#25CB10") +
+  labs(title = "Mean absolute percent error by neighborhood as a function of price",
+       caption = "Figure 5.9",
+>>>>>>> Stashed changes
+       x = "Mean absolute percent error",
+       y = "Mean price") +
+  plotTheme()
+```
+
+<<<<<<< Updated upstream
+##Discussion
+While the model does a better job at predicting high priced homes than lower priced homes, 
+
+##Conclusion
+
+```{r}
+secret_data <- filter(miami.sf, toPredict == 1) 
+secret_preds <- predict(reg1, newdata = secret_data)
+
+output_preds <- data.frame(prediction = secret_preds, Folio = secret_data$Folio, team_name = "Flymiamibro")
+write.csv(output_preds, "Flymiamibro.csv")
+```
+=======
+Finally, using census data, we divided Miami and Miami Beach census tracts by ethnicity. The spatial distribution of these census tracts is shown in the below Figure X.X. We then used our model to predict on each subset to see how it performed across these distinct groups. We found that our model tended to under predict home prices in Hispanic tracts and far over-predict prices in non-Hispanic tracts. This suggests that the model is not entirely generalizable across different groups.
+```{r message=FALSE, warning=FALSE}
+tracts18 <- 
+  tracts18 %>% 
+  mutate(MajHisp = ifelse(pctHisp > .5, "Majority Hispanic", "Majority Non-Hispanic"))
+
+tracts18Clip <- 
+  st_intersection(miami.base.sf, tracts18) %>%
+    dplyr::select(MajHisp) %>%
+    mutate(Selection_Type = "Clip")
+
+ggplot() +
+  geom_sf(data = na.omit(tracts18Clip), aes(fill = MajHisp)) +
+  geom_sf(data = miami.base, fill = "transparent") +
+    scale_fill_manual(values = c("#f07167", "#0081a7"), name="Population Ethnicity") +
+    labs(title = "Census Tracts by Majority Hispanic Population, Miami",
+         subtitle = "Figure 5.10") + 
+  mapTheme()
+
+st_join(miami.baseline.test, tracts18Clip) %>% 
+  group_by(Regression, MajHisp) %>%
+  dplyr::summarize(mean.MAPE = scales::percent(mean(SalePrice.APE, na.rm = T))) %>%
+  st_drop_geometry() %>%
+  spread(MajHisp, mean.MAPE) %>%
+  kable(caption = "Test set MAPE by Ethnicity") %>%
+  kable_styling()
+
+```
+
+## 6. Discussion
+While we were able to continuously hone our model by including various home features, neighborhood amenities, census information, and spatial data,nthe model remains imperfect in in terms of generalizability. This was seen in our earlier discussion around cross-validation and our model's ability to predict home sales on a new set of data. Lack of generalizability was again confirmed when mapping percent error across Miami and Miami Beach neighborhoods where we can see discrepancies in the model's ability to predict prices across different neighborhoods with different average home prices.
+
+A few of the more interesting variables in our model include distance to barbershops and casinos, as well as certain home features like elevators and luxury pools. As discussed earlier, distance to barbershops has a positive correlation with sale price, meaning that as the distance to barbershops increases, the sale price of a home also increases. There is a clear concentration of barbershops in the western section of the City where home sale prices tend to be lower in comparison to the coastal area. Casinos have a similar relationship with sale price as the two casinos in Miami are located in areas with lower home price values. This also raises concerns over casino predatory practices on poorer people in Miami as there have been many studies on casinos' tactics to entice low-income gamblers and exploit more vulnerable populations. Possibly less surprising, but two of the more interesting home characteristics in our model include elevators and luxury pools. The inclusion of these features in homes have strong positive, relationships with home price as these are features predominantly found in luxury properties. 
+
+Our model predicts for 91% of the variation in home price with our most significant variables being the home's adjusted square footage and price per square foot, which we calculated for each home. Surprisingly, distance to the beach was less significant in our model than other variables. That said, the spatial distribution of prices along the coast in Miami indicate there is a clear preference for living near the water. We think that distance to the beach was likely co-linear with other variables in our model and therefore the variable proved to be less important. Based on the maps above and our previous discussion, it is clear that our model needs to improve upon its ability to account for spatial variation in home prices. Considering that our model does a better job at predicting higher-priced homes than lower-priced homes, going forward we will look to consider characteristics and amenities that are unique to lower-priced homes. 
+
+## 7. Conclusion
+This model needs more work before its Zillow roll out. Our model is effective at predicting home prices in higher value neighborhoods in part because it relies so heavily on luxury home characteristics. In order to make this model more generalizable, we need to re-balance the mix of variables to include more information about lower-priced properties.
+>>>>>>> Stashed changes
